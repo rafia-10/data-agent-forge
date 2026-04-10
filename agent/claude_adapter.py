@@ -93,4 +93,4 @@ def get_openrouter_client():
 
 
 # model name to use with OpenRouter for Claude
-CLAUDE_MODEL = "anthropic/claude-sonnet-4-6"
+CLAUDE_MODEL = "anthropic/claude-sonnet-4.6"
