@@ -157,3 +157,9 @@ If `row_count` is 0 the query succeeded but returned no results — check filter
 - **DuckDB files with .db extension** — project_query.db, repo_artifacts.db, yelp_user.db, pancancer_molecular.db, stocktrade_query.db, indextrade_query.db are DuckDB format despite the .db extension
 - **Date formats are inconsistent** across datasets — always cast or parse before date comparisons
 - **PostgreSQL mixed-case tables** — always wrap table and column names in double quotes for crm_support database
+- **yelp ratings** — the `stars` field does NOT exist in MongoDB business collection.
+  Ratings are ONLY in DuckDB `review` table as `rating` field (1-5).
+  To get business ratings: (1) query MongoDB for business_ids by location,
+  (2) query DuckDB review table using business_ref = replace('businessid_', 'businessref_', business_id)
+- **yelp location** — city and state are ONLY in MongoDB business `description` field as free text.
+  Use regex: {"$regex": "Indianapolis, Indiana", "$options": "i"}
