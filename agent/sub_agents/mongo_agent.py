@@ -64,15 +64,15 @@ def run(
 
         if attempt < max_retries:
             fix = recover(
-                failed_query=sql,
+                failed_query=pipeline,
                 error=result["error"],
                 db_type="postgres",   # change to mongodb, sqlite, or duckdb per file
                 tool_name=tool_name,
                 schema=schema,
                 context=context,
             )
-            sql = fix.get("fixed_query", "")
-            if not sql:
+            pipeline = fix.get("fixed_query", "")
+            if not pipeline:
                 break
 
 
