@@ -22,6 +22,9 @@ from openai import OpenAI
 
 # ── config ────────────────────────────────────────────────────────────────────
 
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 MCP_URL     = os.getenv("MCP_URL",  "http://127.0.0.1:5000")
 KB_DIR      = Path(__file__).parent.parent / "kb" / "domain"
 ORACLE_ROOT = Path(__file__).parent.parent
@@ -51,8 +54,11 @@ DATASET_MAP = {
 
 def get_schema(tool_name: str) -> dict:
     """Fetch schema from MCP /schema endpoint."""
+    # skip schema for stockmarket_trade — 2754 tables causes timeout
+    SKIP_SCHEMA = {"query_duckdb_stockmarket_trade"}
+
     try:
-        r = requests.get(f"{MCP_URL}/schema/{tool_name}", timeout=30)
+        r = requests.get(f"{MCP_URL}/schema/{tool_name}", timeout=60)
         r.raise_for_status()
         return r.json()
     except Exception as e:
