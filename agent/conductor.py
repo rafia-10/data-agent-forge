@@ -16,10 +16,11 @@ from typing import TypedDict, Annotated
 from dotenv import load_dotenv
 
 from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_anthropic import ChatAnthropic
 from openai import OpenAI
+import agent.sub_agents.postgres_agent as pg_agent
+import agent.sub_agents.mongo_agent    as mongo_agent
+import agent.sub_agents.sqlite_agent   as sqlite_agent
+import agent.sub_agents.duckdb_agent   as duck_agent
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -201,8 +202,9 @@ Rules:
 
 def execute_node(state: AgentState) -> AgentState:
     """
-    Execute each step in the plan by calling MCP tools.
-    Runs steps sequentially and collects results.
+    Execute each step in the plan by delegating to specialist sub-agents.
+    Each sub-agent knows its database dialect and handles self-correction internally.
+    Prior results are passed to subsequent steps for cross-database joins.
     """
     try:
         plan  = json.loads(state["plan"])
@@ -211,31 +213,39 @@ def execute_node(state: AgentState) -> AgentState:
         state["error"] = "Failed to parse plan"
         return state
 
-    results = []
+    results     = []
+    prior       = []
+    context     = state["context"]
+
     for i, step in enumerate(steps):
         tool_name = step.get("tool_name", "")
-        query     = step.get("query", "")
         db_type   = step.get("db_type", "")
+        task      = step.get("purpose", step.get("query", ""))
 
-        if not tool_name or not query:
+        if not tool_name:
             continue
 
-        # build payload based on db_type
-        if db_type == "mongodb":
-            payload = {"pipeline": query}
-        else:
-            payload = {"sql": query}
+        print(f"  Sub-agent step {i+1}: {tool_name} ({db_type})")
 
-        print(f"  Executing step {i+1}: {tool_name}")
-        result = call_tool(tool_name, payload)
-        result["step_purpose"] = step.get("purpose", "")
+        if db_type == "postgres":
+            result = pg_agent.run(tool_name, task, context, prior)
+        elif db_type == "mongodb":
+            result = mongo_agent.run(tool_name, task, context, prior)
+        elif db_type == "sqlite":
+            result = sqlite_agent.run(tool_name, task, context, prior)
+        elif db_type == "duckdb":
+            result = duck_agent.run(tool_name, task, context, prior)
+        else:
+            result = {"error": f"Unknown db_type: {db_type}", "tool_name": tool_name, "result": []}
+
         results.append(result)
+        prior.append(result)  # pass to next step for cross-DB joins
 
         state["trace"].append({
             "node":      "execute",
             "step":      i + 1,
             "tool_name": tool_name,
-            "query":     query,
+            "db_type":   db_type,
             "row_count": result.get("row_count", 0),
             "error":     result.get("error"),
         })
@@ -378,16 +388,11 @@ def build_graph() -> StateGraph:
 
     graph.add_node("plan",       plan_node)
     graph.add_node("execute",    execute_node)
-    graph.add_node("correct",    correct_node)
     graph.add_node("synthesize", synthesize_node)
 
     graph.set_entry_point("plan")
-    graph.add_edge("plan",    "execute")
-    graph.add_conditional_edges("execute", should_correct, {
-        "correct":   "correct",
-        "synthesize": "synthesize",
-    })
-    graph.add_edge("correct",    "execute")
+    graph.add_edge("plan",       "execute")
+    graph.add_edge("execute",    "synthesize")
     graph.add_edge("synthesize", END)
 
     return graph.compile()
