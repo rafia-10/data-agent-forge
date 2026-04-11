@@ -19,7 +19,7 @@ def execute_query(tool_name: str, sql: str) -> dict[str, Any]:
     if not _is_read_only(sql):
         return _error_response(
             tool_name, sql,
-            "Write operations are not permitted. Only SELECT queries are allowed."r
+            "Write operations are not permitted. Only SELECT queries are allowed."
         )
 
     db_path = tool["path"]
