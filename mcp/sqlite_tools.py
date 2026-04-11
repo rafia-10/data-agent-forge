@@ -2,7 +2,6 @@ import time
 import sqlite3
 from typing import Any
 from pathlib import Path
-
 from mcp.db_config import SQLITE_TOOLS
 
 
@@ -20,7 +19,7 @@ def execute_query(tool_name: str, sql: str) -> dict[str, Any]:
     if not _is_read_only(sql):
         return _error_response(
             tool_name, sql,
-            "Write operations are not permitted. Only SELECT queries are allowed."
+            "Write operations are not permitted. Only SELECT queries are allowed."r
         )
 
     db_path = tool["path"]
