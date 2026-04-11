@@ -70,13 +70,14 @@ class TestParseCorrections:
 
     def test_partial_fields_still_parsed(self):
         # query present, other fields missing — entry still included
+        # the regex captures the full word including underscores
         text = """
 ## music_brainz — 2026-04-10
 **Query:** List all artists from Germany
 """
         entries = parse_corrections(text)
         assert len(entries) == 1
-        assert entries[0]["dataset"] == "music"
+        assert entries[0]["dataset"] == "music_brainz"
         assert "Germany" in entries[0]["query"]
 
     def test_raw_block_preserved(self):
