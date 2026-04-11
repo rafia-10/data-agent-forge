@@ -126,7 +126,8 @@ SELECT * FROM AAPL LIMIT 5;
 [{"$match": {"is_open": 1}}, {"$limit": 5}]
 ```
 Pipeline must be a JSON string. Use `$match`, `$group`, `$project`, `$limit`, `$sort`.
-Location data is in the `description` field as plain text — use `$regex` to filter by city/state.
+Location data is in the `description` field as free text, format: `"Located at [address] in [City], [ST], this..."`.
+Filter by city/state using: `{"description": {"$regex": "in Indianapolis, IN", "$options": "i"}}`
 
 ---
 
@@ -153,15 +154,17 @@ If `row_count` is 0 the query succeeded but returned no results — check filter
 ## 7. Important Notes
 
 - **stockmarket_trade** has 2754 tables — one per stock ticker. Query by ticker name directly: `SELECT * FROM AAPL LIMIT 5`
-- **MongoDB location data** — city and state are embedded in the `description` field as free text. Use regex: `{"$match": {"description": {"$regex": "Indianapolis, Indiana"}}}`
+- **MongoDB business document structure** (yelp) — confirmed fields:
+  `_id` (ObjectId), `business_id` (e.g. "businessid_49"), `name`, `review_count`, `is_open`, `attributes`, `hours`, `description`
+  There is NO `stars`, `city`, or `state` field. Location is only in `description`.
+- **MongoDB location data** — `description` format is: `"Located at [addr] in [City], [ST], this..."`.
+  Filter with: `{"description": {"$regex": "in Indianapolis, IN", "$options": "i"}}`
+  NOT: `"Indianapolis, Indiana"` — state is always TWO-LETTER abbreviation.
+- **yelp ratings** — NO `stars` field in MongoDB. Ratings are in DuckDB tool `query_duckdb_yelp_user`, table `review`, field `rating` (integer 1-5).
+  For average rating by city/state:
+    Step 1: MongoDB $match description regex → collect ALL business_id values (e.g. ["businessid_3", "businessid_7", ...])
+    Step 2: DuckDB → `SELECT AVG(rating) FROM review WHERE business_ref IN ('businessref_3', 'businessref_7', ...)`
+    Key: replace prefix `businessid_` with `businessref_` for every ID. Pass ALL IDs — never truncate the list.
 - **DuckDB files with .db extension** — project_query.db, repo_artifacts.db, yelp_user.db, pancancer_molecular.db, stocktrade_query.db, indextrade_query.db are DuckDB format despite the .db extension
 - **Date formats are inconsistent** across datasets — always cast or parse before date comparisons
 - **PostgreSQL mixed-case tables** — always wrap table and column names in double quotes for crm_support database
-- **yelp ratings** — the `stars` field does NOT exist in MongoDB business collection.
-  Ratings are ONLY in DuckDB `review` table as `rating` field (1-5).
-  To get business ratings: (1) query MongoDB for business_ids by location,
-  (2) query DuckDB review table using business_ref = replace('businessid_', 'businessref_', business_id)
-- **yelp location** — city and state are in MongoDB business `description` field.
-  State is stored as TWO-LETTER abbreviation not full name.
-  Use: {"$regex": "Indianapolis, IN", "$options": "i"}
-  NOT: {"$regex": "Indianapolis, Indiana"}

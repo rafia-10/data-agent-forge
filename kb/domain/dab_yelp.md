@@ -8,7 +8,20 @@ This dataset contains Yelp platform data covering businesses, user check-ins, re
 ## 2. Tables & Collections
 
 ### MongoDB: `business` collection (`query_mongo_yelp_business`)
-Contains business listings. Schema details unavailable — query directly to inspect fields. Expected to include business name, location, categories, hours, and star ratings.
+Confirmed fields (from live inspection):
+| Field | Type | Notes |
+|---|---|---|
+| `_id` | ObjectId string | MongoDB internal ID |
+| `business_id` | VARCHAR | Format: `businessid_##` — join key |
+| `name` | VARCHAR | Business name |
+| `review_count` | INT | Total number of reviews |
+| `is_open` | INT | 1 = open, 0 = closed |
+| `attributes` | dict | e.g. WiFi, CreditCards accepted |
+| `hours` | dict | Day → "HH:MM-HH:MM" |
+| `description` | VARCHAR | Free text: `"Located at [addr] in [City], [ST], this..."` |
+
+**No `stars`, `city`, or `state` fields exist.** Location is only in `description`.
+Filter by city/state: `{"description": {"$regex": "in Indianapolis, IN", "$options": "i"}}`
 
 ### MongoDB: `checkin` collection (`query_mongo_yelp_checkin`)
 Contains check-in event data per business. Schema details unavailable — query directly to inspect fields. Expected to link to businesses via a business identifier.

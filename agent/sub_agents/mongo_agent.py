@@ -66,7 +66,7 @@ def run(
             fix = recover(
                 failed_query=pipeline,
                 error=result["error"],
-                db_type="postgres",   # change to mongodb, sqlite, or duckdb per file
+                db_type="mongodb",
                 tool_name=tool_name,
                 schema=schema,
                 context=context,
