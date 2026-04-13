@@ -359,7 +359,7 @@ def synthesize_node(state: AgentState) -> AgentState:
             "tool":    r.get("tool_name"),
             "purpose": r.get("step_purpose", ""),
             "rows":    r.get("row_count", 0),
-            "data":    r.get("result", [])[:50],
+            "data":    r.get("result", [])[:200],
             "error":   r.get("error"),
         })
 
