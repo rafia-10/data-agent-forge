@@ -185,15 +185,49 @@ Rules:
 
     try:
         response = llm_call(messages, max_tokens=1000)
-        # clean JSON response — extract between first { and last }
+        # robust JSON extraction — handle nested braces correctly
         response = response.strip()
-        start = response.find("{")
-        end   = response.rfind("}") + 1
-        if start != -1 and end > start:
-            response = response[start:end]
+        # strip markdown fences first
+        if "```" in response:
+            parts = response.split("```")
+            for part in parts:
+                part = part.strip()
+                if part.startswith("json"):
+                    part = part[4:].strip()
+                if part.startswith("{"):
+                    response = part
+                    break
+        # count braces to find the true end of the JSON object
+        depth = 0
+        end = 0
+        in_string = False
+        escape = False
+        for i, ch in enumerate(response):
+            if escape:
+                escape = False
+                continue
+            if ch == "\\" and in_string:
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        if end > 0:
+            response = response[:end]
         plan = json.loads(response)
     except Exception as e:
         plan = {"reasoning": f"Planning failed: {e}", "steps": []}
+
+
     state["plan"]  = json.dumps(plan, indent=2)
     state["trace"].append({"node": "plan", "plan": plan})
     return state
