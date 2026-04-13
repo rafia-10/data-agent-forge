@@ -60,8 +60,8 @@ Yelp user profiles.
 ## 3. Join Keys
 - `review.user_id` → `user.user_id` (same format, direct join)
 - `tip.user_id` → `user.user_id` (same format, direct join)
-- `review.business_ref` → MongoDB `business._id` (**format may differ** — verify field name in business collection before joining)
-- `tip.business_ref` → MongoDB `business._id` (same caveat as above)
+- `review.business_ref` → MongoDB `business.business_id` — format mismatch: DuckDB uses `businessref_##`, MongoDB uses `businessid_##`. Replace prefix `businessid_` → `businessref_` before building IN clause.
+- `tip.business_ref` → MongoDB `business.business_id` (same prefix replacement rule as review)
 
 ---
 
@@ -72,7 +72,36 @@ Yelp user profiles.
 
 ---
 
-## 5. Known Query Patterns
+## 5. Categories and Business Type
+MongoDB `business` has **NO `categories` field**. Business type/category is embedded in the `description` as free text:
+`"providing a range of services in Restaurants, Fast Food, Burgers, and American (Traditional)."`
+
+To filter by category: `{"description": {"$regex": "Restaurants", "$options": "i"}}`
+
+Common category patterns in description: `"services in [Cat1], [Cat2], and [Cat3]."` — always at the end of the description.
+
+---
+
+## 6. Attributes / Amenities
+`attributes` is a flat Python dict with **string** values (not actual booleans or nested dicts):
+```json
+{
+  "BusinessAcceptsCreditCards": "True",
+  "WiFi": "u'no'",
+  "BusinessParking": "{'garage': False, 'street': True, 'lot': True, 'valet': False, 'validated': False}",
+  "BusinessAcceptsBitcoin": "False"
+}
+```
+
+**Parking queries:** Use regex on the stringified BusinessParking value:
+- Any parking at all: `{"attributes.BusinessParking": {"$regex": "True"}}`
+- Street parking specifically: `{"attributes.BusinessParking": {"$regex": "'street': True"}}`
+
+Note: attributes values are stored as Python repr strings, not proper JSON. Use `$regex` for all attribute filtering.
+
+---
+
+## 7. Known Query Patterns
 - Top-rated businesses by average `rating`
 - Most active users by `review_count` or tip volume
 - Sentiment trends over time using `rating` and `date`

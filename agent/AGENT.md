@@ -38,7 +38,7 @@ For MongoDB: pass `{"pipeline": "[{\"$match\": ...}]"}` as a JSON string.
 ### SQLite (12 tools)
 | Tool | File | Key Tables |
 |---|---|---|
-| query_sqlite_agnews_metadata | metadata.db | category metadata |
+| query_sqlite_agnews_metadata | metadata.db | authors, article_metadata |
 | query_sqlite_bookreview | review_query.db | review |
 | query_sqlite_crmarenapro_core | core_crm.db | core CRM records |
 | query_sqlite_crmarenapro_products | products_orders.db | products, orders |
@@ -96,6 +96,7 @@ These are known mismatches across databases. Resolve before attempting any cross
 | bookreview | books_info.book_id (PostgreSQL) | bookid_## | review.purchase_id (SQLite) | purchaseid_## | check DAB hints for exact mapping |
 | crmarenapro | Case.Id (PostgreSQL) | string ID | Event.WhatId (DuckDB) | string ID | direct match |
 | googlelocal | business_description.gmap_id (PostgreSQL) | string | review.gmap_id (SQLite) | string | direct match |
+| music_brainz | tracks.track_id (SQLite) | integer | sales.track_id (DuckDB) | integer | direct match |
 
 ---
 
@@ -168,3 +169,6 @@ If `row_count` is 0 the query succeeded but returned no results — check filter
 - **DuckDB files with .db extension** — project_query.db, repo_artifacts.db, yelp_user.db, pancancer_molecular.db, stocktrade_query.db, indextrade_query.db are DuckDB format despite the .db extension
 - **Date formats are inconsistent** across datasets — always cast or parse before date comparisons
 - **PostgreSQL mixed-case tables** — always wrap table and column names in double quotes for crm_support database
+- **yelp categories** — MongoDB business has NO `categories` field. Business type/category is embedded in the `description` text: `"providing a range of services in Restaurants, Fast Food..."`. Filter with: `{"description": {"$regex": "Restaurants", "$options": "i"}}`
+- **yelp attributes/parking** — `attributes` is a flat dict with string values. Parking info is in `attributes.BusinessParking` stored as a stringified Python dict, e.g. `"{'garage': False, 'street': True, 'lot': True}"`. To find businesses with parking: `{"attributes.BusinessParking": {"$regex": "True"}}`. Other attribute keys: `BusinessAcceptsCreditCards`, `WiFi`, `BusinessAcceptsBitcoin`.
+- **googlelocal `state` field** — in `business_description` table, `state` means OPERATING STATUS ("Open", "Temporarily closed", "Permanently closed"), NOT a US geographic state. To filter by geographic location, use the `description` or `name` fields.

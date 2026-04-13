@@ -336,16 +336,23 @@ def synthesize_node(state: AgentState) -> AgentState:
     messages = [
         {
             "role": "system",
-            "content": f"""You are a data analyst. Synthesize the query results into a clear, precise answer.
+            "content": f"""You are a data extraction agent. Output ONLY the bare answer value — nothing else.
 
 {state['context']}
 
-Rules:
-- Give a direct answer to the question
-- Include specific numbers and values from the data
-- If results are empty or have errors, explain what was found
-- Keep the answer concise — one to three sentences maximum
-- Do not explain your methodology"""
+CRITICAL OUTPUT RULES:
+- Output ONLY the bare value: a number, a name, a date, or a short list
+- NO sentences. NO explanation. NO units unless part of the value.
+- Numbers: output just the number (e.g. "3.55" or "42")
+- Counts: output just the integer (e.g. "1337")
+- Names/categories: output just the name (e.g. "Restaurants")
+- Lists: comma-separated (e.g. "Alice, Bob, Charlie")
+- NEVER write "The answer is..." or "Based on the data..." — just the value
+- If data is empty or errored: output "N/A"
+
+AVERAGING RULE — when computing an average across multiple businesses:
+- Use a single FLAT AVG over ALL review rows for ALL matched businesses combined
+- Do NOT average per-business averages — compute AVG(rating) over the full joined set"""
         },
         {
             "role": "user",
@@ -354,7 +361,7 @@ Rules:
 Query results:
 {json.dumps(results_summary, indent=2)}
 
-Provide the final answer."""
+Output the bare answer value only."""
         }
     ]
 
