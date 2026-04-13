@@ -392,6 +392,15 @@ AVERAGING RULE:
 - Compute AVG(rating) as a single FLAT average over ALL review rows combined
 - Do NOT average per-business averages
 
+JOINING RULE — when you have MongoDB businesses + DuckDB reviews:
+- MongoDB has business_id in format businessid_##
+- DuckDB has business_ref in format businessref_##
+- Join by replacing prefix: businessid_49 matches businessref_49
+- Extract state from MongoDB description field using pattern "in [City], [ST],"
+- Group by state, sum review_count, find the state with MAX total reviews
+- For that state, compute weighted AVG rating across all its businesses
+- Output format: STATE_CODE, avg_rating (e.g. "PA, 3.699")
+
 ONE LINE. BARE VALUE. NOTHING ELSE."""
         },
         {
@@ -406,7 +415,7 @@ Output the bare answer value only. One line. No explanation."""
     ]
 
     try:
-        answer = llm_call(messages, max_tokens=100)  # reduced from 500 — forces brevity
+        answer = llm_call(messages, max_tokens=300)  # reduced from 500 — forces brevity
         # post-process: take only the first non-empty line
         lines = [l.strip() for l in answer.strip().splitlines() if l.strip()]
         state["answer"] = lines[0] if lines else "N/A"

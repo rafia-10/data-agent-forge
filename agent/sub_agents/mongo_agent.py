@@ -141,6 +141,7 @@ RULES:
 - Do NOT use $out or $merge stages
 - For counting: use [{{"$match": ...}}, {{"$count": "total"}}] — returns single row with count
 
+
 SCHEMA (inferred from samples):
 {json.dumps(schema, indent=2)}
 
