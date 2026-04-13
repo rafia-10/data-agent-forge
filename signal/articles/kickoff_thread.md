@@ -1,8 +1,8 @@
-# The Oracle Forge: Cracking the 38% DAB Ceiling with Multi-Layer Context 
+# The Oracle Forge: Cracking the 38% DAB Ceiling with Multi-Layer Context
 
 Bio: We are cracking the 38% DAB ceiling via multi-layer context! Follow our Signal Corps for live technical insights and updates from our engineering journey.
 
-*Author: Signal Corps — Team Gemini / Oracle Forge*
+## Author: Signal Corps — Team Gemini / Oracle Forge
 
 ---
 
@@ -10,7 +10,7 @@ Bio: We are cracking the 38% DAB ceiling via multi-layer context! Follow our Sig
 
 | Platform | URL | Date |
 |----------|-----|------|
-|X (Twitter)|https://x.com/GeminiTrp1/status/2042522406699360407?s=20|2026-04-10|
+| X (Twitter) | Team Gemini First Thread [https://x.com/GeminiTrp1/status/2042522406699360407?s=20] | 2026-04-10 |
 
 ---
 
@@ -77,6 +77,7 @@ Development is governed by the AWS AI-DLC framework. This ensures "documentation
 ---
 
 Drivers ( @ENebiyu50445 &  @d_derib) steer the code, Intelligence Officers (Chaile & Liul) curate Karpathy-style Knowledge Bases, and Signal Corps (Rafia & Nuhamin) bring back global technical intelligence. Every role's output becomes an input for the next, multiplying our value.
-Our team collaborates in a live, multi-device environment using #Tailscale mesh networking and #MCP Toolbox for standard database interfaces, powered by tenai-infra. Follow us as we build on https://github.com/Deregit2025/data-agent-forge
+Our team collaborates in a live, multi-device environment using #Tailscale mesh networking and #MCP Toolbox for standard database interfaces, powered by tenai-infra. Follow us as we build on
+[Data Agent Forge Repository](https://github.com/Deregit2025/data-agent-forge)
 
 #AI #DataEngineering #OracleForge #FDE (7/7)
