@@ -120,7 +120,7 @@ WHERE business_ref IN ('businessref_1', 'businessref_2', ...)
 ```
 - Step 2 DuckDB: get ALL reviews grouped — no WHERE clause, no IN clause
 ```sql
-SELECT business_ref, COUNT(*) as review_count, AVG(rating) as avg_rating
+SELECT business_ref, COUNT(*) as review_count, SUM(rating) as rating_sum
 FROM review
 GROUP BY business_ref
 ```
