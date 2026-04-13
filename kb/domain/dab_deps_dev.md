@@ -1,80 +1,135 @@
-# Knowledge Base: deps.dev Dataset
+# Knowledge Base: deps_dev Dataset
+
+---
 
 ## 1. Dataset Overview
-This dataset contains open-source package metadata from [deps.dev](https://deps.dev), covering package versions, licenses, security advisories, dependency resolution status, and associated open-source project information.
+
+The deps_dev dataset contains software package metadata (licensing, versions, dependencies) from a SQLite package database and GitHub project information (stars, forks, licenses) from a DuckDB project database, linkable via System/Name/Version keys.
 
 ---
 
-## 2. Tables and Contents
+## 2. CRITICAL — MCP Tool Mapping
 
-### `packageinfo` (SQLite — `query_sqlite_deps_dev_package`)
-Contains one row per package **version** across multiple ecosystems.
-
-| Field | Type | Notes |
+| Tool Name | DB Type | Contains |
 |---|---|---|
-| `System` | TEXT | Package ecosystem: `NPM`, `PyPI`, `Go`, `Maven`, `Cargo`, etc. |
-| `Name` | TEXT | Package name (may include scope, e.g. `@org/pkg`) |
-| `Version` | TEXT | Version string |
-| `Licenses` | TEXT | JSON array of SPDX license identifiers |
-| `Advisories` | TEXT | JSON array of security advisories |
-| `VersionInfo` | TEXT | JSON with `IsRelease` (bool) and `Ordinal` (int, version sequence order) |
-| `Hashes` | TEXT | JSON array of `{Hash, Type}` objects; types: `MD5`, `SHA1`, `SHA256`, `SHA512` |
-| `DependenciesProcessed` | INTEGER | `1` = dependency resolution attempted |
-| `DependencyError` | INTEGER | `1` = error occurred during dependency resolution |
-| `UpstreamPublishedAt` | REAL | Publish timestamp in **microseconds** since Unix epoch |
-| `Links` | TEXT | JSON array of `{Label, URL}`; `ORIGIN` label = registry URL |
-| `Registries` | TEXT | JSON array of additional registries |
-| `SLSAProvenance` | REAL | SLSA provenance data (mostly null) |
-
-**Composite key:** `(System, Name, Version)`
+| `query_sqlite_deps_dev_package` | SQLite | `packageinfo` table — package metadata, versions, licenses, release info |
+| `query_duckdb_deps_dev_project` | DuckDB | `project_packageversion` table — package-to-project mappings; `project_info` table — GitHub project details (stars, forks, licenses) |
 
 ---
 
-### `project_info` (DuckDB — `query_duckdb_deps_dev_project`)
-Contains one row per open-source project (typically a GitHub repository).
+## 3. Tables and Collections
 
-| Field | Type | Notes |
+### Table: `packageinfo` (SQLite via `query_sqlite_deps_dev_package`)
+
+Full description: Contains metadata of software packages, including licensing information, version release data, dependency details, and registry metadata.
+
+| Field | Type | Meaning |
 |---|---|---|
-| `Project_Information` | VARCHAR | Human-readable summary including open issues, stars, forks |
-| `Licenses` | VARCHAR | JSON array of license identifiers |
-| `Description` | VARCHAR | Project description |
-| `Homepage` | VARCHAR | Project homepage URL |
-| `OSSFuzz` | DOUBLE | OSS-Fuzz integration data (mostly null) |
+| System | TEXT | Package ecosystem (e.g., `NPM`, `Maven`) |
+| Name | TEXT | Package name |
+| Version | TEXT | Version string of the package |
+| Licenses | TEXT | JSON-like array of license identifiers |
+| Links | TEXT | JSON-like list of relevant links (origin, docs, source) |
+| Advisories | TEXT | JSON-like list of security advisories |
+| VersionInfo | TEXT | JSON-like object with release metadata — contains `IsRelease` (bool) and `Ordinal` (numeric ordering) |
+| Hashes | TEXT | JSON-like list of file hashes |
+| DependenciesProcessed | INTEGER | Whether dependencies have been processed (0/1) |
+| DependencyError | INTEGER | Whether a dependency processing error occurred (0/1) |
+| UpstreamPublishedAt | REAL | Unix timestamp in **milliseconds** for upstream release publication |
+| Registries | TEXT | JSON-like list of registries where the package is published |
+| SLSAProvenance | REAL | SLSA provenance level if available |
+| UpstreamIdentifiers | TEXT | JSON-like list of upstream identifiers |
+| Purl | REAL | Package URL in purl format (if available) |
+
+**Important value formats:**
+- `VersionInfo` is a JSON string. To check if a version is a release: parse `IsRelease` field (boolean). To find the latest release, use the `Ordinal` field (higher = more recent).
+- `System` values are uppercase strings: `NPM`, `Maven`, `PyPI`, etc.
+- `UpstreamPublishedAt` is in **milliseconds** (not seconds).
 
 ---
 
-### `project_packageversion` (DuckDB — `query_duckdb_deps_dev_project`)
-Links projects to specific package versions.
+### Table: `project_packageversion` (DuckDB via `query_duckdb_deps_dev_project`)
 
-| Field | Type | Notes |
+Full description: Contains mappings between package versions and their associated GitHub projects.
+
+| Field | Type | Meaning |
 |---|---|---|
-| `System` | VARCHAR | Matches `packageinfo.System` |
-| `Name` | VARCHAR | Matches `packageinfo.Name` |
-| `Version` | VARCHAR | Matches `packageinfo.Version` |
-| `ProjectType` | VARCHAR | e.g., `GITHUB` |
-| `ProjectName` | VARCHAR | e.g., `github.com/org/repo` |
-| `RelationProvenance` | VARCHAR | How the relationship was determined |
-| `RelationType` | VARCHAR | Nature of the link (e.g., source repo) |
+| System | VARCHAR | Package ecosystem (e.g., `NPM`) |
+| Name | VARCHAR | Package name |
+| Version | VARCHAR | Package version string |
+| ProjectType | VARCHAR | Type of project (e.g., `GITHUB`) |
+| ProjectName | VARCHAR | Repository path in `owner/repo` format |
+| RelationProvenance | VARCHAR | Provenance of the relationship data |
+| RelationType | VARCHAR | Type of relationship (e.g., source repository type) |
+
+**Important value formats:**
+- `ProjectName` is in `owner/repo` format (e.g., `facebook/react`). This is the join key to `project_info`.
 
 ---
 
-## 3. Join Keys
-- `project_packageversion` → `packageinfo`: join on `(System, Name, Version)` — all three fields must match; both databases must be queried separately and results merged.
-- `project_packageversion` → `project_info`: join on `ProjectName` (no explicit FK; match by project identifier string).
+### Table: `project_info` (DuckDB via `query_duckdb_deps_dev_project`)
+
+Full description: Contains GitHub project information including stars, forks, licenses, and descriptions.
+
+| Field | Type | Meaning |
+|---|---|---|
+| Project_Information | VARCHAR | Textual description containing project name, **GitHub stars count**, **fork count**, and other metrics — must be parsed to extract numeric values |
+| Licenses | VARCHAR | JSON-like array of license identifiers associated with the project |
+| Description | VARCHAR | Project description field (may differ from Project_Information) |
+| Homepage | VARCHAR | Homepage URL of the project |
+| OSSFuzz | DOUBLE | OSSFuzz status indicator |
+
+**Important value formats:**
+- `Project_Information` is a **free-text string** that embeds GitHub stars and fork counts. You must extract these numerically from the text (e.g., using string parsing or regex-like SQL functions).
+- The project name embedded in `Project_Information` corresponds to the `ProjectName` (`owner/repo`) from `project_packageversion` — use this to join.
+- `Licenses` in `project_info` is the **project-level** license (used for query2), distinct from `Licenses` in `packageinfo` (package-level).
 
 ---
 
-## 4. Domain Terms
-- **System**: The package registry/ecosystem (e.g., NPM, PyPI)
-- **Ordinal**: Integer indicating a version's sequential release order within a package
-- **IsRelease**: Whether a version is a formal release (vs. pre-release)
-- **DependencyError**: Failed dependency graph resolution for that version
+## 4. Join Keys
+
+### Cross-database join path:
+
+**Step 1:** Join `packageinfo` (SQLite) → `project_packageversion` (DuckDB)
+- Join on: `System` = `System`, `Name` = `Name`, `Version` = `Version`
+- Both sides store these as strings; values should match directly (e.g., `NPM` = `NPM`).
+
+**Step 2:** Join `project_packageversion` (DuckDB) → `project_info` (DuckDB)
+- Join on: `project_packageversion.ProjectName` matched against the project name embedded in `project_info.Project_Information`
+- `ProjectName` is in `owner/repo` format; `Project_Information` contains this identifier as part of its text.
+
+**Verbatim from official hints:**
+> To solve this query, you will need to combine information from both the package and project databases. First, match package records in "packageinfo" from "package_database" with records in "project_packageversion" from "project_database" using the shared attributes "System", "Name", and "Version". Then, take the "ProjectName" from "project_packageversion" and use it to find the corresponding record in "project_info".
 
 ---
 
-## 5. Known Query Patterns
-- Packages with security advisories by ecosystem
-- Packages with dependency resolution errors
-- License distribution across ecosystems
-- Most starred/forked projects linked to specific packages
-- Packages published within a date range (convert `Up
+## 5. Critical Domain Knowledge
+
+**Verbatim from official hints:**
+> To solve this query, you will need to combine information from both the package and project databases. First, match package records in "packageinfo" from "package_database" with records in "project_packageversion" from "project_database" using the shared attributes "System", "Name", and "Version". Then, take the "ProjectName" from "project_packageversion" and use it to find the corresponding record in "project_info".
+
+> The "Project_Information" field in "project_info" contains the project name as well as important repository metrics such as GitHub stars count and fork count, along with other descriptive details.
+
+**Additional critical knowledge:**
+
+1. **Identifying "latest release version" (query1):**
+   - Filter `packageinfo` where `System = 'NPM'`.
+   - A version is a **release** if `VersionInfo` JSON contains `"IsRelease": true`.
+   - The **latest** release per package is determined by the **highest `Ordinal`** value in the `VersionInfo` JSON field. Do NOT rely on lexicographic version string sorting.
+   - For each distinct `Name`, select the row with `IsRelease = true` AND the maximum `Ordinal`.
+
+2. **Extracting GitHub stars and forks from `Project_Information`:**
+   - `Project_Information` is a plain text/structured string. Stars and forks are embedded as numeric values within this text.
+   - Use SQL string functions (e.g., `LIKE`, `INSTR`, `SUBSTR`, or regex in DuckDB) to extract the integer values for stars and forks.
+   - DuckDB supports `regexp_extract()` which can be used to pull numeric values from `Project_Information`.
+
+3. **"Marked as release" (query2):**
+   - Means `VersionInfo` contains `"IsRelease": true` in `packageinfo`.
+
+4. **Project license vs. package license:**
+   - Query2 filters on **project** license `'MIT'` — this comes from `project_info.Licenses`, NOT `packageinfo.Licenses`.
+
+5. **Scope of queries:**
+   - Both queries are restricted to `System = 'NPM'` packages only.
+
+6. **`Version

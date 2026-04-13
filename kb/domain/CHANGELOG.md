@@ -1,4 +1,24 @@
 
+## 2026-04-13 14:59
+
+Schema introspector run — DAB-description-first approach.
+
+- `dab_stockindex.md` — regenerated from DAB descriptions + MCP schemas + 3 queries
+- `dab_stockmarket.md` — regenerated from DAB descriptions + MCP schemas + 5 queries
+
+## 2026-04-13 14:49
+
+Schema introspector run — DAB-description-first approach.
+
+- `dab_crmarenapro.md` — regenerated from DAB descriptions + MCP schemas + 13 queries
+- `dab_deps_dev.md` — regenerated from DAB descriptions + MCP schemas + 2 queries
+- `dab_github_repos.md` — regenerated from DAB descriptions + MCP schemas + 4 queries
+- `dab_music_brainz.md` — regenerated from DAB descriptions + MCP schemas + 3 queries
+- `dab_pancancer.md` — regenerated from DAB descriptions + MCP schemas + 3 queries
+- `dab_patents.md` — regenerated from DAB descriptions + MCP schemas + 3 queries
+- `dab_stockindex.md` — regenerated from DAB descriptions + MCP schemas + 3 queries
+- `dab_stockmarket.md` — regenerated from DAB descriptions + MCP schemas + 5 queries
+
 ## 2026-04-13 13:28
 
 Schema introspector run — DAB-description-first approach.
