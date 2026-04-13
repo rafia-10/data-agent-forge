@@ -6,7 +6,43 @@ This dataset contains Yelp platform data covering businesses, user check-ins, re
 ---
 
 ## 2. Tables & Collections
+## CRITICAL — MCP Tool Mapping for Yelp
 
+Only 3 MCP tools exist for yelp:
+
+| Tool | DB | Contains |
+|---|---|---|
+| `query_mongo_yelp_business` | MongoDB `yelp_db` | `business` collection |
+| `query_mongo_yelp_checkin` | MongoDB `yelp_db` | `checkin` collection |
+| `query_duckdb_yelp_user` | DuckDB `yelp_user.db` | `review`, `tip`, `user` tables |
+
+**ALL review queries, tip queries, AND user queries go through `query_duckdb_yelp_user`.**
+Never invent tools like `query_duckdb_yelp_review` — it does not exist.
+
+### Correct query patterns:
+
+**Get reviews in 2018:**
+```sql
+SELECT DISTINCT business_ref FROM review 
+WHERE REGEXP_EXTRACT(date, '\d{4}') = '2018'
+```
+
+**Get review count and avg rating per business:**
+```sql
+SELECT business_ref, COUNT(*) as review_count, AVG(rating) as avg_rating 
+FROM review GROUP BY business_ref
+```
+
+**Intersect DuckDB business_refs with MongoDB results:**
+- Get business_refs from DuckDB first
+- Convert to business_ids: replace `businessref_` → `businessid_`
+- Pass as MongoDB `$match` with `$in` operator
+- Keep IN list under 50 items to avoid query truncation
+
+**State extraction from MongoDB description:**
+- No `state` or `city` field exists — extract from `description` text
+- Pattern: `"in [City], [ST],"` — use `$regex` with capture
+- Example: `{"description": {"$regex": "in \\w+, ([A-Z]{2}),"}}`
 ### MongoDB: `business` collection (`query_mongo_yelp_business`)
 Confirmed fields (from live inspection):
 | Field | Type | Notes |
@@ -55,7 +91,37 @@ Yelp user profiles.
 | `elite` | VARCHAR | Comma-separated years user held Elite status; empty string if never Elite |
 | `useful/funny/cool` | BIGINT | Cumulative reaction votes received across all reviews |
 
+
+
+### Cross-DB join strategy (avoid large IN clauses):
+
+For state-level aggregations:
+1. Query DuckDB `review` for ALL business_refs + review counts + avg ratings
+2. Query MongoDB for ALL businesses + descriptions (no filtering)
+3. Let synthesize node match them — do NOT build IN clauses with >20 items
+
 ---
+
+### Intersection queries (businesses reviewed in year X AND have attribute Y):
+
+Step 1 — DuckDB: get business_refs reviewed in target year
+```sql
+SELECT DISTINCT business_ref FROM review 
+WHERE REGEXP_EXTRACT(date, '\d{4}') = '2018'
+```
+Step 2 — Convert refs to ids: `businessref_N` → `businessid_N`
+Step 3 — MongoDB: match BOTH the business_id IN list AND the parking attribute:
+```json
+[{"$match": {
+    "business_id": {"$in": ["businessid_1", "businessid_2", ...]},
+    "$or": [
+        {"attributes.BusinessParking": {"$regex": "True"}},
+        {"attributes.BikeParking": {"$regex": "True"}}
+    ]
+}},
+{"$count": "total"}]
+```
+This gives the exact intersection count directly from MongoDB.
 
 ## 3. Join Keys
 - `review.user_id` → `user.user_id` (same format, direct join)
