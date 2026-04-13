@@ -164,17 +164,16 @@ Respond with a JSON plan in this exact format:
     {{
       "tool_name": "exact_tool_name",
       "db_type": "postgres|mongodb|sqlite|duckdb",
-      "query": "SQL query OR MongoDB pipeline JSON string",
-      "purpose": "what this step finds"
+      "purpose": "precise description of what data to fetch: which table, which filter conditions, which columns to return, and how results will be used in the next step"
     }}
   ]
 }}
 
 Rules:
-- For MongoDB tools: query must be a valid JSON array string of pipeline stages
-- For SQL tools: query must be a valid SELECT statement
 - Maximum 5 steps
 - Only use tools from the AVAILABLE TOOLS list
+- Order steps so that cross-database join dependencies flow correctly (earlier results feed into later steps)
+- purpose must be specific enough that a database expert can write the query from it alone
 - Respond with JSON only, no other text"""
         },
         {
@@ -357,42 +356,68 @@ def synthesize_node(state: AgentState) -> AgentState:
     for r in state["tool_results"]:
         results_summary.append({
             "tool":    r.get("tool_name"),
-            "purpose": r.get("step_purpose", ""),
+            "task":    r.get("task", ""),
             "rows":    r.get("row_count", 0),
             "data":    r.get("result", [])[:200],
             "error":   r.get("error"),
         })
 
     # ── Python pre-computation for cross-DB joins ─────────────────────────────
-    pre_computed = _precompute_joins(state["tool_results"])
+    pre_computed = _precompute_joins(state["tool_results"], state["dataset"])
+
+    # ── dataset-specific joining rules for the prompt ─────────────────────────
+    dataset = state.get("dataset", "")
+    joining_rule = ""
+    if dataset == "yelp":
+        joining_rule = """
+YELP JOINING RULE — when you have MongoDB businesses + DuckDB reviews:
+- Join by replacing prefix: businessid_49 matches businessref_49
+- Extract state from MongoDB description field: pattern "in [City], [ST],"
+- Group by state, sum review_count, find MAX state
+- AVERAGING RULE: use flat AVG over all review rows — never average per-business averages
+- Output format: STATE, avg_rating (e.g. PA, 3.547)
+"""
+    elif dataset == "googlelocal":
+        joining_rule = """
+GOOGLELOCAL JOINING RULE — when you have PostgreSQL businesses + SQLite reviews:
+- Join on gmap_id (direct string match — same format in both databases)
+- Filter to businesses matching the city/region from the question
+- Sort by avg_rating DESC for top-N queries
+- Output: comma-separated business names in order
+"""
+    elif dataset == "bookreview":
+        joining_rule = """
+BOOKREVIEW JOINING RULE — when you have PostgreSQL book metadata + SQLite reviews:
+- Join on books_info.book_id = review.purchase_id
+- Compute AVG(rating) per book across all matching review rows
+- Apply filters from question (category, language, date range, rating threshold)
+"""
+    elif dataset == "music_brainz":
+        joining_rule = """
+MUSIC_BRAINZ JOINING RULE — when you have SQLite tracks + DuckDB sales:
+- Join on tracks.track_id = sales.track_id
+- Multiple track_id values may represent the same real-world track (entity resolution)
+- Aggregate revenue/units across all matching track_ids for the same song
+"""
 
     messages = [
         {
             "role": "system",
-            "content": """You are a data extraction machine. Output ONLY the bare answer — nothing else.
+            "content": f"""You are a data extraction machine. Output ONLY the bare answer — nothing else.
 
 ABSOLUTE RULES:
 - ONE line only. Just the value. No reasoning. No explanation. No markdown.
 - NO "Based on...", NO "I need to...", NO "The answer is..."
 - Numbers: just the number (e.g. 3.55)
-- State + number: e.g. PA, 3.699
-- Name: just the name
-- List: comma-separated
+- Names: just the name or comma-separated list
 - Cannot determine: N/A
-
-JOINING RULE — when you have MongoDB businesses + DuckDB reviews:
-- Join by replacing prefix: businessid_49 matches businessref_49
-- Extract state from MongoDB description: pattern "in [City], [ST],"
-- Group by state, sum review_count, find MAX state
-- Output: STATE, avg_rating
-
-AVERAGING RULE: use flat AVG over all review rows — never average per-business averages."""
+{joining_rule}"""
         },
         {
             "role": "user",
             "content": f"""Question: {state['question']}
 
-Pre-computed joins (use these directly if available):
+Pre-computed joins (use these directly if available — preferred over raw data):
 {json.dumps(pre_computed, indent=2)}
 
 Raw query results:
@@ -403,7 +428,7 @@ Output the bare answer value only. One line."""
     ]
 
     try:
-        answer = llm_call(messages, max_tokens=50)
+        answer = llm_call(messages, max_tokens=150)
         lines = [l.strip() for l in answer.strip().splitlines() if l.strip()]
         state["answer"] = lines[0] if lines else "N/A"
     except Exception as e:
@@ -413,24 +438,33 @@ Output the bare answer value only. One line."""
     return state
 
 
-def _precompute_joins(tool_results: list[dict]) -> dict:
+def _precompute_joins(tool_results: list[dict], dataset: str = "") -> dict:
     """
     Pre-compute cross-DB joins in Python so the LLM only needs to read the answer.
-    Handles MongoDB business + DuckDB review joins for state-level aggregations.
+    Dataset-aware: dispatches to the right join logic.
     """
+    if dataset == "yelp":
+        return _precompute_yelp(tool_results)
+    if dataset == "googlelocal":
+        return _precompute_googlelocal(tool_results)
+    return {}
+
+
+def _precompute_yelp(tool_results: list[dict]) -> dict:
+    """Yelp: MongoDB business + DuckDB review join — state-level aggregation."""
     import re
 
-    mongo_results = [r for r in tool_results if r.get("db_type") == "mongodb"]
+    mongo_results  = [r for r in tool_results if r.get("db_type") == "mongodb"]
     duckdb_results = [r for r in tool_results if r.get("db_type") == "duckdb"]
 
     if not mongo_results or not duckdb_results:
         return {}
 
-    # build business_id → state map from MongoDB descriptions
+    # business_id → state from MongoDB descriptions
     business_state = {}
     for mr in mongo_results:
         for row in mr.get("result", []):
-            bid = row.get("business_id", "")
+            bid  = row.get("business_id", "")
             desc = row.get("description", "")
             if bid and desc:
                 m = re.search(r'\bin ([A-Za-z\s]+),\s*([A-Z]{2})[,\.]', desc)
@@ -440,45 +474,94 @@ def _precompute_joins(tool_results: list[dict]) -> dict:
     if not business_state:
         return {}
 
-    # build businessref → {review_count, avg_rating} from DuckDB
-    # build businessref → {review_count, rating_sum} from DuckDB
+    # businessref → {review_count, rating_sum} from DuckDB
     ref_stats = {}
     for dr in duckdb_results:
         for row in dr.get("result", []):
             ref = row.get("business_ref", "")
             cnt = row.get("review_count", 0)
-            # use rating_sum if available, else fall back to avg_rating * count
-            if "rating_sum" in row:
-                rsum = row.get("rating_sum", 0)
-            else:
-                rsum = row.get("avg_rating", 0) * cnt
+            rsum = row.get("rating_sum", row.get("avg_rating", 0) * cnt)
             if ref:
                 ref_stats[ref] = {"review_count": cnt, "rating_sum": rsum}
 
     # join: businessid_## ↔ businessref_##
-    state_reviews = {}
+    state_reviews    = {}
     state_rating_sum = {}
-    for bid, state in business_state.items():
+    for bid, st in business_state.items():
         ref = bid.replace("businessid_", "businessref_")
         if ref in ref_stats:
-            stats = ref_stats[ref]
-            cnt = stats["review_count"]
-            rsum = stats["rating_sum"]
-            state_reviews[state] = state_reviews.get(state, 0) + cnt
-            state_rating_sum[state] = state_rating_sum.get(state, 0) + rsum
+            cnt  = ref_stats[ref]["review_count"]
+            rsum = ref_stats[ref]["rating_sum"]
+            state_reviews[st]    = state_reviews.get(st, 0) + cnt
+            state_rating_sum[st] = state_rating_sum.get(st, 0) + rsum
 
     if not state_reviews:
         return {}
 
-    top_state = max(state_reviews, key=lambda s: state_reviews[s])
-    total_cnt = state_reviews.get(top_state, 0)
+    top_state  = max(state_reviews, key=lambda s: state_reviews[s])
+    total_cnt  = state_reviews[top_state]
     avg_rating = round(state_rating_sum[top_state] / total_cnt, 4) if total_cnt else 0
 
     return {
-        "top_state_by_reviews": top_state,
-        "total_reviews_in_state": state_reviews[top_state],
-        "avg_rating_in_state": avg_rating,
-        "all_states": {s: {"reviews": state_reviews[s]} for s in sorted(state_reviews, key=lambda x: state_reviews[x], reverse=True)},
+        "top_state_by_reviews":   top_state,
+        "total_reviews_in_state": total_cnt,
+        "avg_rating_in_state":    avg_rating,
+        "all_states": {
+            s: {"reviews": state_reviews[s]}
+            for s in sorted(state_reviews, key=lambda x: state_reviews[x], reverse=True)
+        },
+    }
+
+
+def _precompute_googlelocal(tool_results: list[dict]) -> dict:
+    """GoogleLocal: PostgreSQL business + SQLite review join on gmap_id."""
+    pg_results     = [r for r in tool_results if r.get("db_type") == "postgres"]
+    sqlite_results = [r for r in tool_results if r.get("db_type") == "sqlite"]
+
+    if not pg_results or not sqlite_results:
+        return {}
+
+    # gmap_id → name from PostgreSQL
+    gmap_name = {}
+    for pr in pg_results:
+        for row in pr.get("result", []):
+            gid  = row.get("gmap_id", "")
+            name = row.get("name", row.get("Name", ""))
+            if gid and name:
+                gmap_name[gid] = name
+
+    if not gmap_name:
+        return {}
+
+    # gmap_id → {avg_rating, review_count} from SQLite
+    gmap_ratings = {}
+    for sr in sqlite_results:
+        for row in sr.get("result", []):
+            gid = row.get("gmap_id", "")
+            if gid:
+                avg = row.get("avg_rating", row.get("rating", 0))
+                cnt = row.get("review_count", row.get("count", 1))
+                gmap_ratings[gid] = {"avg_rating": avg, "review_count": cnt}
+
+    # join and rank
+    joined = []
+    for gid, name in gmap_name.items():
+        if gid in gmap_ratings:
+            joined.append({
+                "name":         name,
+                "gmap_id":      gid,
+                "avg_rating":   gmap_ratings[gid]["avg_rating"],
+                "review_count": gmap_ratings[gid]["review_count"],
+            })
+
+    if not joined:
+        return {}
+
+    joined.sort(key=lambda x: x["avg_rating"], reverse=True)
+    return {
+        "businesses_by_rating": joined,
+        "top_business":         joined[0]["name"] if joined else None,
+        "top_5_names":          ", ".join(b["name"] for b in joined[:5]),
     }
 
 
