@@ -184,12 +184,13 @@ Rules:
     ]
 
     try:
-       # clean JSON response — extract between first { and last }
+        response = llm_call(messages, max_tokens=1000)
+         # clean JSON response — extract between first { and last }
         response = response.strip()
         start = response.find("{")
         end   = response.rfind("}") + 1
         if start != -1 and end > start:
-            response = response[start:end]
+             response = response[start:end]
         plan = json.loads(response)
     except Exception as e:
         plan = {"reasoning": f"Planning failed: {e}", "steps": []}
