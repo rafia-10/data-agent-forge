@@ -112,4 +112,34 @@ Full description: One record per CPC symbol. Contains the hierarchical structure
 
 > The descriptive title for each CPC code can be found in the `titleFull` field of the `cpc_definition` table.
 
-> Citation information is stored in
+> Citation information is stored in the `citation` field of the `publicationinfo` table as a JSON-like string containing cited patent publication numbers, assignees, and non-patent literature references.
+
+---
+
+## 5. Critical Domain Knowledge
+
+### Verbatim Official Hints (complete set):
+> The `cpc` field in `publicationinfo` contains CPC classification codes. The full definitions are in `cpc_definition.titleFull`.
+
+> The descriptive title for each CPC code can be found in the `titleFull` field of `cpc_definition`.
+
+> Citation information is stored in the `citation` field of `publicationinfo` as a JSON-like string. To find patents that cite a specific assignee, parse the `citation` field for entries referencing that assignee's publication numbers.
+
+> All dates in `publicationinfo` (`publication_date`, `filing_date`, `grant_date`, `priority_date`) are stored as natural-language strings (e.g., "March 15th, 2020"). Year extraction requires LIKE '%2022%' or SUBSTR/INSTR — NOT SQL date functions.
+
+> The `Patents_info` field in `publicationinfo` contains a natural-language summary including `assignee_harmonized`, `application_number`, `publication_number`, and `country_code`. Use LIKE for filtering by assignee or country.
+
+### Key Query Patterns:
+- **Filter by technology area (CPC):** Extract codes from `publicationinfo.cpc` using `LIKE '%H04L%'` → look up `titleFull` in `cpc_definition` where `symbol LIKE 'H04L%'`
+- **Filter by assignee:** `Patents_info LIKE '%UNIVERSITY OF CALIFORNIA%'` (case-insensitive with UPPER() or ILIKE)
+- **Filter by country:** `Patents_info LIKE '%country_code: DE%'` for Germany
+- **Filter by year:** `publication_date LIKE '%2020%'` or `filing_date LIKE '%2019%'`
+- **Cited patents:** Parse `citation` field for `publication_number` values referencing a specific assignee
+- **CPC hierarchy traversal:** Use `level` field in `cpc_definition` — level 1=section, 2=class, 3=subclass, 4=group, 5=subgroup
+- **Active CPC codes only:** Add `status = 'active'` filter on `cpc_definition`
+
+### Common Pitfalls:
+- `cpc` in `publicationinfo` is a multi-value JSON-like string — never direct-join; always use LIKE/INSTR for code matching.
+- All date fields are free-text — `strftime` and date functions WILL FAIL; use string patterns.
+- `assignee_harmonized` is embedded in `Patents_info` free text — extract with LIKE, not a separate column.
+- `level` is `double precision`, not integer — compare as `level = 5.0` or `level = 4.0`.

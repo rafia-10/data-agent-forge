@@ -140,4 +140,4 @@ The AG News dataset consists of news articles stored across two databases: a Mon
 4. Group by `region`, count World articles per region.
 5. Return the region with the highest count.
 
-**Expected answer
+**Expected answer format:** A single region name string (e.g., `"Europe"`, `"North America"`).

@@ -124,4 +124,5 @@ Applied per `Index`, filtered to `Date >= '2020-01-01'`, grouped by `Index`. The
 **Region Classification (must be inferred — not in data):**
 - **Asia:** N225 (Japan), HSI (Hong Kong), 000001.SS (Shanghai/China), any other Asian exchange symbols
 - **North America:** Symbols tied to US exchanges (NYSE, NASDAQ, S&P 500 → `^GSPC`, Dow Jones → `^DJI`, NASDAQ Composite → `^IXIC`) and Canadian exchanges (TSX → `^GSPTSE`)
-- **Europe:** Symbols tied to German (DAX → `^GDA
+- **Europe:** Symbols tied to German (DAX → `^GDAXI`), French (CAC 40 → `^FCHI`), UK (FTSE 100 → `^FTSE`), and other European exchange symbols
+- **Unknown:** If an index symbol is not in the list above, query `index_info` by exchange name and infer region from country geography.

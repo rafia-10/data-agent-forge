@@ -132,4 +132,26 @@ Full description: Contains GitHub project information including stars, forks, li
 5. **Scope of queries:**
    - Both queries are restricted to `System = 'NPM'` packages only.
 
-6. **`Version
+6. **`VersionInfo` JSON parsing:** `VersionInfo` is a JSON string stored as TEXT. Parse `IsRelease` with `LIKE '%"IsRelease": true%'` and extract `Ordinal` with `CAST(json_extract(VersionInfo, '$.Ordinal') AS INTEGER)` (DuckDB) or `CAST(SUBSTR(VersionInfo, INSTR(VersionInfo, '"Ordinal": ') + 11) AS INTEGER)` (SQLite).
+
+7. **Three-way join sequence:**
+   - SQLite (`packageinfo`) → DuckDB (`project_packageversion`) on `System + Name + Version`
+   - DuckDB (`project_packageversion`) → DuckDB (`project_info`) on `ProjectName`
+
+---
+
+## 6. Query Patterns
+
+### query1: Latest release version of each NPM package and its GitHub stars
+1. `query_sqlite_deps_dev`: Get all NPM packages with `IsRelease = true` — for each `Name`, find the row with the highest `Ordinal` in `VersionInfo`.
+2. `query_duckdb_deps_dev`: Join those `(Name, Version)` pairs to `project_packageversion` to get `ProjectName`.
+3. `query_duckdb_deps_dev`: Join `ProjectName` to `project_info` to get `Project_Information` (parse stars count).
+4. Return: package name, latest release version, GitHub stars.
+
+### query2: NPM packages marked as release under MIT-licensed projects
+1. `query_duckdb_deps_dev` (`project_info`): Find all projects where `Licenses = 'MIT'`. Get `ProjectName`.
+2. `query_duckdb_deps_dev` (`project_packageversion`): Filter by those `ProjectName` values, get `(System, Name, Version)` pairs.
+3. `query_sqlite_deps_dev` (`packageinfo`): Filter by `System = 'NPM'` AND `(Name, Version)` matches AND `VersionInfo LIKE '%"IsRelease": true%'`.
+4. Return: count of matching packages.
+
+**Answer formats:** Numeric counts or lists of package names/versions.

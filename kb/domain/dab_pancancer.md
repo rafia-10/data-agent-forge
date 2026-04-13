@@ -107,4 +107,45 @@ Full description: Contains normalized RNA-seq expression values for patients in 
 
 ## 4. Join Keys
 
-### Primary Join
+### Primary Join: `clinical_info.Patient_description` ↔ `Mutation_Data.ParticipantBarcode` / `RNASeq_Expression.ParticipantBarcode`
+
+- `clinical_info.Patient_description` (PostgreSQL) contains the full TCGA barcode (e.g., `TCGA-AX-A3G8`).
+- `Mutation_Data.ParticipantBarcode` and `RNASeq_Expression.ParticipantBarcode` (DuckDB) contain the same full TCGA barcode format.
+- **Join condition:** `clinical_info.Patient_description = Mutation_Data.ParticipantBarcode` (direct string match — same format in both databases).
+- **Workflow:** Query PostgreSQL to get `Patient_description` values matching clinical criteria → use those values as an `IN` list to filter DuckDB molecular tables, or vice versa.
+
+### Secondary Join: `Mutation_Data` ↔ `RNASeq_Expression`
+- Both tables share `ParticipantBarcode` — direct string match.
+
+---
+
+## 5. Critical Domain Knowledge
+
+### Cancer Type Acronyms
+- `LGG` = Brain Lower Grade Glioma
+- `BRCA` = Breast Invasive Carcinoma
+- `OV` = Ovarian Serous Cystadenocarcinoma
+- `LUAD` = Lung Adenocarcinoma
+- `LUSC` = Lung Squamous Cell Carcinoma
+- `GBM` = Glioblastoma Multiforme
+- `UCEC` = Uterine Corpus Endometrial Carcinoma
+- `KIRC` = Kidney Renal Clear Cell Carcinoma
+- **Note:** The exact cancer type field name in `clinical_info` must be discovered by querying the schema. Likely candidates: `acronym`, `type`, `Study`, or `cancer_type`.
+
+### Verbatim Official Hints
+> The gene expression data in RNASeq_Expression is stored as normalized counts. To compute log-transformed expression values, use the formula: log10(normalized_count + 1). The +1 offset (pseudocount) ensures that zero-expression values remain valid.
+
+> In clinical_info, entries where the histological_type or icd_o_3_histology field is enclosed in square brackets (e.g., [Not Available], [Unknown], [Discrepancy]) represent missing or invalid annotations and should be excluded from histological-type analysis.
+
+> The FILTER field in Mutation_Data is used for quality control. Only mutations with FILTER = 'PASS' are considered reliable.
+
+### Key Formulas
+- **Log10 gene expression:** `LOG10(normalized_count + 1)` — mandatory pseudocount +1
+- **Average expression by histology group:** `AVG(LOG10(normalized_count + 1))` grouped by `icd_o_3_histology`
+- **Survival days to years:** `CAST(days_to_death AS FLOAT) / 365.25`
+
+### Common Pitfalls
+- `days_to_death` and `days_to_last_followup` are TEXT — always `CAST(... AS FLOAT)` before arithmetic.
+- `[Not Available]`, `[Unknown]` are strings, not NULL — filter with `icd_o_3_histology NOT LIKE '[%]'`.
+- Multiple rows per patient in molecular tables — use `DISTINCT ParticipantBarcode` when counting patients.
+- Cancer type acronym column name must be verified from schema before use.

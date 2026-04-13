@@ -149,3 +149,22 @@ LIMIT 1
 ### query3: *Which song generated the highest total revenue in USD across all stores and countries?*
 
 **Step 1 — `query_duckdb_music_brainz_sales`:**
+```sql
+SELECT track_id, SUM(revenue_usd) AS total_revenue
+FROM sales
+GROUP BY track_id
+ORDER BY total_revenue DESC
+LIMIT 20
+```
+Retrieve the top `track_id` values by revenue (top 20 to allow for entity resolution across duplicates).
+
+**Step 2 — `query_sqlite_music_brainz`:**
+```sql
+SELECT track_id, title, artist, album, year
+FROM tracks
+WHERE track_id IN (<top track_ids from Step 1>)
+```
+- Perform entity resolution: group rows that represent the same real-world track (same title + artist, possibly different formats).
+- Aggregate total revenue for all `track_id`s belonging to the same real-world track.
+
+**Expected answer format:** A single song title string (the title of the track with highest aggregate revenue).

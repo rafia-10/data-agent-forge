@@ -125,4 +125,30 @@ Full description: Contains Amazon book review information including ratings, tex
 ### query1: Decade with highest average rating (≥10 distinct rated books)
 
 **Tools and order:**
-1. `query_postgres_bookreview` — Extract `book_id` and publication year from `details` (use regex/string parsing). Group
+1. `query_postgres_bookreview` — Extract `book_id` and publication year from `details` (use regex/string parsing). Group by decade (floor to nearest 10: e.g., publication year 1994 → decade 1990). Count distinct `book_id` per decade. Keep only decades with ≥10 distinct rated books.
+2. `query_sqlite_bookreview` — Compute `AVG(rating)` per `purchase_id` (which maps to `book_id`).
+3. Join on `book_id = purchase_id`. For each qualifying decade, compute average rating across all books in that decade. Return the decade with the highest average rating.
+
+**Expected answer format:** A decade year (e.g., `1990`, `2000`, `2010`).
+
+---
+
+### query2: English Literature & Fiction books with perfect 5.0 average rating
+
+**Tools and order:**
+1. `query_postgres_bookreview` — Filter `books_info` where `categories LIKE '%Literature & Fiction%'` AND `details LIKE '%English%'`. Return `book_id` and `title`.
+2. `query_sqlite_bookreview` — For each returned `book_id`, compute `AVG(rating)` from `review` where `purchase_id = book_id`. Keep only those with `AVG(rating) = 5.0`.
+3. Return matching book titles.
+
+**Expected answer format:** One or more book titles.
+
+---
+
+### query3: Children's Books with ≥4.5 average rating from 2020+ reviews
+
+**Tools and order:**
+1. `query_postgres_bookreview` — Filter `books_info` where `categories LIKE '%Children''s Books%'`. Return `book_id`.
+2. `query_sqlite_bookreview` — Filter `review` where `purchase_id IN (<book_ids>)` AND `review_time >= '2020-01-01'`. Compute `AVG(rating)` per `purchase_id`. Keep only those ≥ 4.5.
+3. Join back to `books_info` to retrieve titles.
+
+**Expected answer format:** List of book titles meeting the criteria.

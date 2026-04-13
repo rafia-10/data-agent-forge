@@ -127,3 +127,24 @@ The github_repos dataset contains metadata and artifacts for GitHub repositories
 
 #### README.md Detection
 - Filter using `sample_path = 'README.md'` (case-sensitive exact match)
+---
+
+## 6. Query Patterns
+
+### query1: Repositories where main language is NOT Python, sorted by stars
+
+1. `query_sqlite_github_repos` (`languages`): Filter `language_description NOT LIKE '%Python%'` OR parse byte counts to confirm Python is not the dominant language. Get `repo_name`.
+2. `query_sqlite_github_repos` (`repos`): Join on `repo_name` to get `stars` and `repo_description`.
+3. Sort by `stars` DESC, return top N.
+
+### query2: Most frequently copied non-binary file in README.md files
+
+1. `query_duckdb_github_repos` (`contents`): Filter `sample_path = 'README.md'` AND `repo_data_description LIKE '%binary: false%'`. Parse `copies` count from `repo_data_description`. Group by `id`, sum copies.
+2. Return the file `id` with the highest total copies count.
+
+### query3: Repository with most commits in a specific year
+
+1. `query_duckdb_github_repos` (`commits`): Filter by year from `author` JSON timestamp field (`json_extract(author, '$.timestamp')`). Group by `repo_name`, count commits. Sort DESC, take top 1.
+2. `query_sqlite_github_repos` (`repos`): Look up the repo description if needed.
+
+**Answer format:** A repo name string in `owner/repo` format.
