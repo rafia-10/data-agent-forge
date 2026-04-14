@@ -148,6 +148,45 @@ consolidate()
 
 ---
 
+### 5. `schema_introspector` — KB Domain File Generator
+
+Generates the `kb/domain/dab_*.md` files for all 12 DAB datasets. Uses DAB's official `db_description.txt` as the primary source, MCP live schema as secondary, and Claude enrichment as tertiary. Writes structured markdown with tool mapping, schemas, join keys, query patterns, and pitfalls.
+
+**When to use:** Run after pulling a new DataAgentBench version, or whenever a domain KB file needs to be regenerated from scratch.
+
+```python
+from utils.schema_introspector import introspect_all
+
+# Regenerate KB files for all 12 datasets (requires MCP server + Claude API)
+introspect_all()
+
+# Regenerate only specific datasets
+introspect_all(datasets=["yelp", "bookreview"])
+```
+
+**CLI usage:**
+```bash
+# All datasets
+python -m utils.schema_introspector
+
+# Single dataset
+python -m utils.schema_introspector --datasets yelp
+
+# Multiple datasets
+python -m utils.schema_introspector --datasets yelp agnews patents
+```
+
+**How it works:**
+1. Loads `db_description.txt` + `db_description_withhint.txt` from the DAB folder (ground truth)
+2. Calls `GET /schema/{tool_name}` on the MCP server for live column names and types
+3. Loads all `query.json` files for the dataset so Claude knows exactly what questions to answer
+4. Calls Claude Sonnet 4.6 to generate a structured KB markdown document
+5. Writes to `kb/domain/dab_{dataset}.md` and appends to `kb/domain/CHANGELOG.md`
+
+**Fallback:** If the Claude API is unavailable, writes a minimal markdown file from the DAB description alone — the agent can still run, just with reduced domain guidance.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -159,6 +198,15 @@ pytest utils/tests/test_entity_resolver.py -v
 pytest utils/tests/test_contract_validator.py -v
 pytest utils/tests/test_multi_pass_retrieval.py -v
 pytest utils/tests/test_autodream.py -v
+pytest utils/tests/test_schema_introspector.py -v
 ```
 
 All tests use mocked MCP/OpenAI calls — no live server required.
+
+| Test file | Module | Tests |
+|---|---|---|
+| `test_multi_pass_retrieval.py` | `multi_pass_retrieval` | retrieval pass logic, broadening, retries |
+| `test_entity_resolver.py` | `entity_resolver` | prefix detection, resolve, resolve_auto, join clause builder |
+| `test_contract_validator.py` | `contract_validator` | empty check, concrete value check, consistency, format modes |
+| `test_autodream.py` | `autodream` | log_correction, consolidate, KB file update |
+| `test_schema_introspector.py` | `schema_introspector` | fallback markdown, DAB file loading, query loading, MCP mock, DATASET_MAP |
