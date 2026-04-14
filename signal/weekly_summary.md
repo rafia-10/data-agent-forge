@@ -59,6 +59,7 @@
 - Community introductions on DAB Discord and HF Discord
 
 **Shipped:**
+
 - Kickoff posts across all 5 platforms ✅
 - Slack daily posts started ✅
 - Medium article ✅
