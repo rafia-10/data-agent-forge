@@ -29,6 +29,9 @@ class TrialResult:
     elapsed_s:    float
     root_name:    str           = ""
     error:        Optional[str] = None
+    steps:        list          = field(default_factory=list)
+    # steps format: [{"node": "execute", "tool_name": "...", "db_type": "...",
+    #                  "query_used": "...", "row_count": N, "error": null}, ...]
 
     def to_dict(self) -> dict:
         return {
@@ -43,6 +46,7 @@ class TrialResult:
             "elapsed_s":    self.elapsed_s,
             "root_name":    self.root_name,
             "error":        self.error,
+            "steps":        self.steps,
         }
 
 

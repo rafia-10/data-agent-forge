@@ -274,12 +274,13 @@ def execute_node(state: AgentState) -> AgentState:
         prior.append(result)  # pass to next step for cross-DB joins
 
         state["trace"].append({
-            "node":      "execute",
-            "step":      i + 1,
-            "tool_name": tool_name,
-            "db_type":   db_type,
-            "row_count": result.get("row_count", 0),
-            "error":     result.get("error"),
+            "node":       "execute",
+            "step":       i + 1,
+            "tool_name":  tool_name,
+            "db_type":    db_type,
+            "query_used": result.get("query_used", ""),
+            "row_count":  result.get("row_count", 0),
+            "error":      result.get("error"),
         })
 
     state["tool_results"] = results

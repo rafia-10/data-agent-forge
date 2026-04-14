@@ -149,6 +149,7 @@ def run_trial(
     start = time.perf_counter()
     answer = ""
     error  = None
+    steps  = []
 
     try:
         agent = OracleForgeAgent(
@@ -159,6 +160,41 @@ def run_trial(
             root_name=run_id,
         )
         answer = agent.run() or ""
+
+        # extract compact step trace from agent for embedding in benchmark JSON
+        for step in getattr(agent, "trace", []):
+            node = step.get("node", "")
+            if node == "plan":
+                plan = step.get("plan", {})
+                steps.append({
+                    "node":      "plan",
+                    "reasoning": plan.get("reasoning", ""),
+                    "step_count": len(plan.get("steps", [])),
+                    "tools_planned": [s.get("tool_name") for s in plan.get("steps", [])],
+                })
+            elif node == "execute":
+                steps.append({
+                    "node":       "execute",
+                    "step":       step.get("step"),
+                    "tool_name":  step.get("tool_name"),
+                    "db_type":    step.get("db_type"),
+                    "query_used": step.get("query_used", ""),
+                    "row_count":  step.get("row_count", 0),
+                    "error":      step.get("error"),
+                })
+            elif node == "correct":
+                steps.append({
+                    "node":      "correct",
+                    "tool_name": step.get("tool_name"),
+                    "fix":       step.get("fix", ""),
+                    "row_count": step.get("row_count", 0),
+                    "error":     step.get("error"),
+                })
+            elif node == "synthesize":
+                steps.append({
+                    "node":   "synthesize",
+                    "answer": step.get("answer", ""),
+                })
     except Exception as e:
         error  = f"{type(e).__name__}: {e}"
         logger.error(f"    Agent error: {error}")
@@ -192,6 +228,7 @@ def run_trial(
         elapsed_s=    elapsed,
         root_name=    run_id,
         error=        error,
+        steps=        steps,
     )
 
 
