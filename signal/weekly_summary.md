@@ -8,13 +8,14 @@
 
 | Date | Platform | Type | URL | Reach |
 |------|----------|------|-----|-------|
+| 2026-04-13 | Reddit r/learnmachinelearning | Post | [[url]](https://www.reddit.com/r/learnmachinelearning/s/Tj2GY36U7I) | 2 shares|
+| 2026-04-13 | Reddit r/PromptQL | Post | [[url]](https://www.reddit.com/r/PromptQL/s/OmcQuM5EH6) | 1 share|
 | 2026-04-13 | X (Twitter) | Thread | https://x.com/GeminiTrp1/status/2043655547207999759?s=20 | 7 impressions |
 | 2026-04-12 | Medium | Article | https://medium.com/@rafia_k./were-trying-to-beat-gemini-3-pro-on-a-public-benchmark-26f844bc9bf1 | [update] |
 | 2026-04-12 | ReadyTensor | Article | https://app.readytensor.ai/publications/were-trying-to-beat-gemini-3-pro-on-a-public-benchmark-w29HwYbedo5Y | [update] |
 | 2026-04-11 | X (Twitter) | Thread | https://x.com/GeminiTrp1/status/2043026176432545821?s=20 | 19 impressions |
 | 2026-04-10 | X (Twitter) | Quote Retweet | https://x.com/GeminiTrp1/status/2042557438755278919?s=20 | 11 impressions |
 | 2026-04-10 | X (Twitter) | Thread | https://x.com/GeminiTrp1/status/2042522406699360407?s=20 | 80 impressions |
-| [date] | Reddit r/ML | Post | [url] | [update] |
 | [date] | Reddit r/LocalLLaMA | Post | [url] | [update] |
 | [date] | Discord DAB | Comment | — | — |
 | [date] | Discord HF | Comment | — | — |
@@ -26,8 +27,8 @@
 
 - [ ] First X thread live ✅ (2026-04-10)
 - [ ] Daily Slack posts (4 per day, 4 bullets max) ✅
-- [ ] At least one Reddit substantive comment
-- [ ] At least one Discord substantive comment
+- [ ] At least one Reddit substantive comment ✅
+- [ ] At least one Discord substantive comment ✅
 - [ ] Medium/ReadyTensor article published ✅ (2026-04-12)
 
 ---
@@ -65,13 +66,13 @@
 - Medium article ✅
 - ReadyTensor article ✅
 - X thread: ✅
-- Reddit posts: [status]
-- Discord intros: [status]
+- Reddit posts: ✅
+- Discord intros: ✅
 - LinkedIn post: [status]
 
 **Delta / why:**
 
-One thing we did not do was make a substantive Reddit and X/Twitter comment. The reason for this is that we wanted to focus on the kickoff and progress tracking content first, and we didn't have enough information to make a helpful comment yet. We will prioritise making these comments in the second week as we gather more insights from the community.
+One thing we did not do was make a substantive LinkedIn and X/Twitter comment. The reason for this is that we wanted to focus on the kickoff and progress tracking content first, and we didn't have enough information to make a helpful comment yet. We will prioritise making these comments in the second week as we gather more insights from the community.
 
 ---
 
