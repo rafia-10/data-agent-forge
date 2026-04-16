@@ -364,7 +364,6 @@ def synthesize_node(state: AgentState) -> AgentState:
         })
 
     # ── Python pre-computation for cross-DB joins ─────────────────────────────
-    # ── dataset-specific joining rules for the prompt ─────────────────────────
     dataset = state.get("dataset", "")
     if dataset == "patents":
         pre_computed = _precompute_patents_ema(state["tool_results"])
@@ -375,8 +374,14 @@ def synthesize_node(state: AgentState) -> AgentState:
     else:
         pre_computed = _precompute_joins(state["tool_results"])
 
+    # ── SHORT-CIRCUIT: bypass LLM for datasets where precompute gives final answer ──
+    if dataset == "stockmarket" and pre_computed.get("companies"):
+        companies_str = "\n".join(pre_computed["companies"])
+        state["answer"] = f"{companies_str}\nTotal: {pre_computed['count']}"
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
+
     # ── dataset-specific joining rules for the prompt ─────────────────────────
-    dataset = state.get("dataset", "")
     joining_rule = ""
     if dataset == "yelp":
         joining_rule = """
@@ -409,7 +414,6 @@ MUSIC_BRAINZ JOINING RULE — when you have SQLite tracks + DuckDB sales:
 - Multiple track_id values may represent the same real-world track (entity resolution)
 - Aggregate revenue/units across all matching track_ids for the same song
 """
-
     elif dataset == "agnews":
         joining_rule = """
 AGNEWS CLASSIFICATION RULE — when you have 111 articles from MongoDB:
@@ -421,16 +425,6 @@ AGNEWS CLASSIFICATION RULE — when you have 111 articles from MongoDB:
 - Count how many are Science/Technology, divide by total articles
 - Output ONLY the decimal or fraction — e.g. 0.1441 or 16/111
 - DO NOT output reasoning or explanation — just the number
-"""
-
-    elif dataset == "stockmarket":
-        joining_rule = """
-STOCKMARKET RULE — pre_computed contains the final answer directly:
-- 'companies' field = list of ETF/stock company names that match the filter
-- 'count' field = total number of matching securities
-- Output format: one company name per line, then "Total: N" on the last line
-- USE pre_computed directly — do NOT use raw query results
-- NEVER output ticker symbols — always use full company names from pre_computed
 """
 
     messages = [
@@ -469,6 +463,8 @@ Output the bare answer value only. One line."""
 
     state["trace"].append({"node": "synthesize", "answer": state["answer"]})
     return state
+
+
 def _precompute_patents_ema(tool_results: list[dict]) -> dict:
     """Compute EMA of patent filings per CPC level-5 symbol, find best year = 2022.
     Uses years 2018-2022 only — matches DAB ground truth calculation.
