@@ -364,9 +364,11 @@ def synthesize_node(state: AgentState) -> AgentState:
         })
 
     # ── Python pre-computation for cross-DB joins ─────────────────────────────
-    pre_computed = _precompute_joins(state["tool_results"])
-    if not pre_computed:
+    dataset = state.get("dataset", "")
+    if dataset == "patents":
         pre_computed = _precompute_patents_ema(state["tool_results"])
+    else:
+        pre_computed = _precompute_joins(state["tool_results"])
 
     # ── dataset-specific joining rules for the prompt ─────────────────────────
     dataset = state.get("dataset", "")
