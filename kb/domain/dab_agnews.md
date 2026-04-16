@@ -109,11 +109,16 @@ The AG News dataset consists of news articles stored across two databases: a Mon
 **Approach:**
 1. Call `query_sqlite_agnews_metadata` to find `author_id` for `name = 'Amy Jones'` from the `authors` table.
 2. Call `query_sqlite_agnews_metadata` to get all `article_id` values from `article_metadata` where `author_id` matches Amy Jones's ID.
-3. Call `query_mongo_agnews` to retrieve `title` and `description` for all those `article_id` values.
-4. In application logic, classify each retrieved article into one of the four categories.
-5. Count articles classified as **Science/Technology** divided by total articles authored by Amy Jones.
+3. Call `query_mongo_agnews` to retrieve `title` and `description` for ALL article_ids using `$in` operator — pass the complete list, not a subset.
+   Pipeline: `[{"$match": {"article_id": {"$in": [id1, id2, ...]}}}, {"$project": {"article_id": 1, "title": 1, "description": 1}}]`
+4. Classify EACH article as World, Sports, Business, or Science/Technology by carefully reading the title and description. Science/Technology articles typically discuss: computers, software, internet, gadgets, space, scientific research, medical research, electronics, telecommunications, AI, robotics, engineering.
+5. Count articles classified as Science/Technology, divide by total (111). Output as decimal e.g. `0.1441` or fraction e.g. `16/111`.
 
-**Expected answer format:** A fraction or decimal (e.g., `0.25` or `1/4`). Report as a simplified fraction or decimal as appropriate.
+**CRITICAL RULES:**
+- Do NOT use article_id ranges to guess category — IDs are NOT ordered by category in this database.
+- Do NOT use keyword matching alone — read the full context of each title and description.
+- Pass ALL article_ids to MongoDB in one $in query — never truncate the list.
+- The answer must be a number, not an explanation. Output only the fraction or decimal.
 
 ---
 
