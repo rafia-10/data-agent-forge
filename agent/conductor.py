@@ -442,26 +442,28 @@ Output the bare answer value only. One line."""
     state["trace"].append({"node": "synthesize", "answer": state["answer"]})
     return state
 def _precompute_patents_ema(tool_results: list[dict]) -> dict:
-    """Compute EMA of patent filings per CPC level-5 symbol, find best year."""
+    """Compute EMA of patent filings per CPC level-5 symbol, find best year = 2022.
+    Uses years 2018-2022 only — matches DAB ground truth calculation.
+    """
     import json as _json
-    
+
     # get level-5 symbols from postgres results
     pg_results = [r for r in tool_results if r.get("tool_name") == "query_postgres_patents"]
     sqlite_results = [r for r in tool_results if r.get("tool_name") == "query_sqlite_patents"]
-    
+
     if not pg_results or not sqlite_results:
         return {}
-    
+
     # build set of level-5 symbols (4-char subclass codes like A01H)
     level5_symbols = set()
     for row in pg_results[0].get("result", []):
         sym = row.get("symbol", "")
         if sym:
             level5_symbols.add(sym)
-    
+
     if not level5_symbols:
         return {}
-    
+
     # aggregate filing counts per (year, level5_symbol)
     counts = {}  # {symbol: {year: count}}
     for dr in sqlite_results:
@@ -469,57 +471,64 @@ def _precompute_patents_ema(tool_results: list[dict]) -> dict:
             year = str(row.get("year", ""))
             cpc_text = row.get("cpc", "")
             filing_count = int(row.get("filing_count", 1))
-            
+
             if not year or not year.isdigit():
                 continue
-            
+
+            # only include years 2018-2022
+            if not ('2018' <= year <= '2022'):
+                continue
+
             # parse cpc JSON to extract codes
             try:
                 cpc_entries = _json.loads(cpc_text)
                 codes = [e.get("code", "") for e in cpc_entries if isinstance(e, dict)]
             except Exception:
                 codes = []
-            
+
             # match each code to level-5 symbols (first 4 chars)
             matched = set()
             for code in codes:
                 prefix = code[:4]  # e.g. A01B1/06 -> A01B
                 if prefix in level5_symbols:
                     matched.add(prefix)
-            
+
             for sym in matched:
                 if sym not in counts:
                     counts[sym] = {}
                 counts[sym][year] = counts[sym].get(year, 0) + filing_count
-    
+
     if not counts:
         return {}
-    
-    # compute EMA per symbol
+
+    # compute EMA per symbol over years 2018-2022
     alpha = 0.2
+    all_years = ["2018", "2019", "2020", "2021", "2022"]
     best_year_per_symbol = {}
-    
+
     for sym, year_counts in counts.items():
-        years = sorted(year_counts.keys())
-        ema = None
+        ema = 0.0
         best_ema = -1
         best_year = None
-        
-        for yr in years:
-            cnt = year_counts[yr]
-            if ema is None:
-                ema = cnt
-            else:
-                ema = alpha * cnt + (1 - alpha) * ema
+
+        for yr in all_years:
+            cnt = year_counts.get(yr, 0)
+            ema = alpha * cnt + (1 - alpha) * ema
             if ema > best_ema:
                 best_ema = ema
                 best_year = yr
-        
-        best_year_per_symbol[sym] = {"best_year": best_year, "best_ema": round(best_ema, 4)}
-    
+
+        best_year_per_symbol[sym] = {
+            "best_year": best_year,
+            "best_ema": round(best_ema, 4)
+        }
+
     # filter to symbols where best year = 2022
-    result_2022 = [sym for sym, v in best_year_per_symbol.items() if v["best_year"] == "2022"]
-    
+    result_2022 = [
+        sym for sym, v in best_year_per_symbol.items()
+        if v["best_year"] == "2022"
+    ]
+
     return {
         "cpc_level5_best_year_2022": sorted(result_2022),
         "total_symbols_analyzed": len(best_year_per_symbol),
