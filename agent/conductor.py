@@ -364,9 +364,10 @@ def synthesize_node(state: AgentState) -> AgentState:
         })
 
     # ── Python pre-computation for cross-DB joins ─────────────────────────────
-    dataset = state.get("dataset", "")
     if dataset == "patents":
         pre_computed = _precompute_patents_ema(state["tool_results"])
+    elif dataset == "agnews":
+        pre_computed = _precompute_agnews_category(state["tool_results"], state["question"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
 
@@ -558,6 +559,68 @@ def _precompute_joins(tool_results: list[dict], dataset: str = "") -> dict:
     if dataset == "googlelocal":
         return _precompute_googlelocal(tool_results)
     return {}
+
+def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict:
+    """Classify agnews articles by category using keyword heuristics."""
+    mongo_results = [r for r in tool_results if r.get("tool_name") == "query_mongo_agnews"]
+    if not mongo_results:
+        return {}
+    
+    articles = mongo_results[0].get("result", [])
+    if not articles:
+        return {}
+    
+    # keyword sets per category
+    scitech = ['tech', 'software', 'computer', 'internet', 'digital', 'science',
+               'research', 'nasa', 'space', 'robot', 'linux', 'security', 'network',
+               'wireless', 'chip', 'processor', 'server', 'microsoft', 'google',
+               'apple', 'ibm', 'intel', 'cisco', 'oracle', 'hp ', 'dell ', 'ebay',
+               'amazon', 'yahoo', 'broadband', 'telecom', 'satellite', 'genome',
+               'biotech', 'physics', 'chemistry', 'astronomy', 'climate', 'energy',
+               'study finds', 'scientists', 'researchers', 'laboratory', 'gene',
+               'virus', 'vaccine', 'drug', 'medical', 'cancer', 'stem cell']
+    sports = ['game', 'match', 'team', 'player', 'coach', 'season', 'league',
+              'championship', 'tournament', 'olympic', 'athlete', 'score', 'win',
+              'loss', 'defeat', 'victory', 'stadium', 'basketball', 'football',
+              'soccer', 'baseball', 'tennis', 'golf', 'cricket', 'rugby', 'nfl',
+              'nba', 'mlb', 'nhl', 'fifa', 'sport', 'racing', 'runner', 'swim']
+    business = ['stock', 'market', 'company', 'corp', 'inc', 'earnings', 'profit',
+                'revenue', 'shares', 'investor', 'ceo', 'merger', 'acquisition',
+                'economy', 'bank', 'finance', 'trade', 'oil', 'dollar', 'quarter']
+    
+    question_lower = question.lower()
+    target_category = None
+    if 'science' in question_lower or 'tech' in question_lower:
+        target_category = 'scitech'
+    elif 'sport' in question_lower:
+        target_category = 'sports'
+    elif 'business' in question_lower:
+        target_category = 'business'
+    elif 'world' in question_lower:
+        target_category = 'world'
+    
+    if not target_category:
+        return {}
+    
+    kw_map = {'scitech': scitech, 'sports': sports, 'business': business}
+    keywords = kw_map.get(target_category, [])
+    
+    count = 0
+    for article in articles:
+        text = (article.get('title', '') + ' ' + article.get('description', '')).lower()
+        if any(kw in text for kw in keywords):
+            count += 1
+    
+    total = len(articles)
+    fraction = count / total if total else 0
+    
+    return {
+        "category": target_category,
+        "count": count,
+        "total": total,
+        "fraction": round(fraction, 10),
+        "answer": f"{count}/{total}"
+    }
 
 
 def _precompute_yelp(tool_results: list[dict]) -> dict:
