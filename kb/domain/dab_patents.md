@@ -149,11 +149,16 @@ SELECT symbol, "titleFull" FROM cpc_definition WHERE level = 5.0 AND status = 'p
 ```
 
 Step 2 — SQLite: get filing year and cpc text for all patents:
-```sql
-SELECT SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS year, cpc
+SELECT 
+  SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS year,
+  cpc,
+  COUNT(*) as filing_count
 FROM publicationinfo
-WHERE filing_date IS NOT NULL AND cpc IS NOT NULL
-AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2015 AND 2023
+WHERE filing_date IS NOT NULL 
+  AND cpc IS NOT NULL
+  AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2015 AND 2023
+GROUP BY year, cpc
+ORDER BY year
 ```
 
 Step 3 — Synthesize (Python): for each level-5 symbol, check if it appears in cpc text using LIKE matching. Count filings per (year, symbol). Compute EMA with alpha=0.2 going forward through years. Find the year with maximum EMA per symbol. Return only symbols where best year = 2022.
