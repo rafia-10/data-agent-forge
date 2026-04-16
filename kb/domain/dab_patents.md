@@ -130,13 +130,70 @@ Full description: One record per CPC symbol. Contains the hierarchical structure
 > The `Patents_info` field in `publicationinfo` contains a natural-language summary including `assignee_harmonized`, `application_number`, `publication_number`, and `country_code`. Use LIKE for filtering by assignee or country.
 
 ### Key Query Patterns:
+### Key Query Patterns:
 - **Filter by technology area (CPC):** Extract codes from `publicationinfo.cpc` using `LIKE '%H04L%'` → look up `titleFull` in `cpc_definition` where `symbol LIKE 'H04L%'`
 - **Filter by assignee:** `Patents_info LIKE '%UNIVERSITY OF CALIFORNIA%'` (case-insensitive with UPPER() or ILIKE)
 - **Filter by country:** `Patents_info LIKE '%country_code: DE%'` for Germany
 - **Filter by year:** `publication_date LIKE '%2020%'` or `filing_date LIKE '%2019%'`
 - **Cited patents:** Parse `citation` field for `publication_number` values referencing a specific assignee
-- **CPC hierarchy traversal:** Use `level` field in `cpc_definition` — level 1=section, 2=class, 3=subclass, 4=group, 5=subgroup
-- **Active CPC codes only:** Add `status = 'active'` filter on `cpc_definition`
+- **CPC hierarchy traversal:** Actual levels in this database are 2, 4, 5, 7–19. Level 5 = subclass codes (format: A01H, A22B — 4 characters). NOT the standard 1–5 hierarchy.
+- **CPC codes filter:** Use `status = 'published'` — NOT `'active'`. Status values are `'published'` and `'frozen'` only. `'active'` does not exist and returns 0 rows.
+- **Level 5 query:** `SELECT symbol, "titleFull" FROM cpc_definition WHERE level = 5.0 AND status = 'published'` — returns 677 rows.
+- **Year extraction from natural-language dates:** Use `SUBSTR(filing_date, LENGTH(filing_date)-3, 4)` — year is always the last 4 characters (e.g., "January 3rd, 2019" → "2019").
+
+### Query 1 — EMA of filings by CPC level-5 code, best year = 2022
+
+Step 1 — PostgreSQL: get all level-5 published CPC symbols:
+```sql
+SELECT symbol, "titleFull" FROM cpc_definition WHERE level = 5.0 AND status = 'published'
+```
+
+Step 2 — SQLite: get filing year and cpc text for all patents:
+```sql
+SELECT SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS year, cpc
+FROM publicationinfo
+WHERE filing_date IS NOT NULL AND cpc IS NOT NULL
+AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2015 AND 2023
+```
+
+Step 3 — Synthesize (Python): for each level-5 symbol, check if it appears in cpc text using LIKE matching. Count filings per (year, symbol). Compute EMA with alpha=0.2 going forward through years. Find the year with maximum EMA per symbol. Return only symbols where best year = 2022.
+
+### Common Pitfalls:
+- `status = 'active'` DOES NOT EXIST — returns 0 rows. Always use `status = 'published'`.
+- `level` is `double precision` — use `level = 5.0` not `level = 5`.
+- `cpc` field is multi-value JSON-like string — never direct-join; use LIKE matching.
+- All date fields are free-text — `strftime` and date functions WILL FAIL.
+- Year is at the END of the date string — use `SUBSTR(filing_date, LENGTH(filing_date)-3, 4)`.
+
+### Query 1 — EMA of patent filings by CPC level-5 code, best year = 2022
+
+**Step 1 — SQLite:** Extract filing year and individual CPC codes:
+```sql
+SELECT 
+  CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) AS year,
+  cpc
+FROM publicationinfo 
+WHERE filing_date IS NOT NULL 
+  AND cpc IS NOT NULL
+  AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2015 AND 2023
+```
+
+**Step 2 — PostgreSQL:** Get all level-5 active CPC symbols:
+```sql
+SELECT symbol, "titleFull" 
+FROM cpc_definition 
+WHERE level = 5 AND status = 'active'
+```
+
+**Step 3 — Synthesize (Python pre-computation):**
+- Parse each patent's `cpc` field to extract individual codes using LIKE matching
+- Count filings per (year, cpc_code) pair
+- For each cpc_code, compute EMA across years with alpha=0.2:
+  `EMA_t = alpha * count_t + (1 - alpha) * EMA_{t-1}`
+- Find the year with maximum EMA per code
+- Return only level-5 codes whose best year = 2022
+
+**CRITICAL:** Year is at the END of the natural-language date string (e.g., "January 3rd, 2019" → last 4 chars = "2019"). Use `SUBSTR(filing_date, LENGTH(filing_date)-3, 4)` to extract year.
 
 ### Common Pitfalls:
 - `cpc` in `publicationinfo` is a multi-value JSON-like string — never direct-join; always use LIKE/INSTR for code matching.
