@@ -106,7 +106,8 @@ def _generate_pipeline(
 
             # extract all ID/ref values — never truncate
             id_fields = ["business_ref", "business_id", "user_id", "book_id",
-                         "gmap_id", "_id", "repo_id", "package_name", "patent_id"]
+             "gmap_id", "_id", "repo_id", "package_name", "patent_id",
+             "article_id", "track_id", "case_id", "account_id", "id"]
             extracted = {}
             for field in id_fields:
                 vals = [r[field] for r in rows if field in r]
