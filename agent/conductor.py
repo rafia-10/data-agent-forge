@@ -570,7 +570,7 @@ def _precompute_stockmarket_filter(tool_results: list[dict], question: str) -> d
 
     def _short_name(desc):
         import re
-        name = re.split(r'\s+(?:offers|provides|is\s+an?\b|specializes|harnesses|aims)', desc, maxsplit=1)[0]
+        name = re.split(r'\s+(?:offers|provides|is\s+(?:an?\s+|at\s+|the\s+)?|specializes|harnesses|aims|based)', desc, maxsplit=1)[0]
         return name.rstrip('.,').strip()
 
     # Extract year from question
