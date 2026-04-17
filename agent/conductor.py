@@ -388,6 +388,11 @@ def synthesize_node(state: AgentState) -> AgentState:
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
     
+    if dataset == "stockindex" and pre_computed.get("short_circuit"):
+        state["answer"] = pre_computed["answer"]
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
+    
     if dataset == "deps_dev" and pre_computed.get("top_packages"):
         state["answer"] = pre_computed["top5_output"]
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
