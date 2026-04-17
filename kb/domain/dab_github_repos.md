@@ -151,9 +151,11 @@ The github_repos dataset contains metadata and artifacts for GitHub repositories
 ### query2: *Identify the repository in Swift language that contains the most frequently copied non-binary Swift file in the dataset, ensuring that each file is uniquely determined by its ID.*
 
 1. `query_sqlite_github_metadata` (`languages`): Filter `language_description LIKE '%Swift%'`. Get `repo_name` for Swift repos.
-2. `query_duckdb_github_artifacts` (`contents`): Filter `sample_repo_name IN (...)` with the Swift repos list. Filter `sample_path LIKE '%.swift'` AND repo_data_description ILIKE '%non-binary%'.
-3. Extract the `copies` count from `repo_data_description` (e.g., parsing "copies: X"). Since each file must be uniquely determined by its ID, deduplicate rows by `id` or aggregate `copies` properly. Find the file `id` with the highest copy count.
-4. Return its `sample_repo_name`. (If there are multiple rows for the same `id`, take that repository).
+2. `query_duckdb_github_artifacts` (`files` + `contents`): Join `files` and `contents` on `id`. Filter `files.repo_name IN (...)` with the Swift repos list AND `files.path LIKE '%.swift'` AND `contents.repo_data_description ILIKE '%non-binary%'`.
+3. Extract the `copies` count from `repo_data_description` using regex `(?:duplicated|appears|appearing|copied|repeated) (\d+) times`. Deduplicate on `c.id` using `QUALIFY ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY copies DESC) = 1`.
+4. Return `files.repo_name` of the row with highest copies — NOT `contents.sample_repo_name` which is only a sample reference and not the authoritative repo owner.
+
+**CRITICAL**: Do NOT use `contents.sample_repo_name` to identify the repo — it is unreliable. Always use `files.repo_name` as the authoritative repo-to-blob mapping.
 
 ### query3: *How many commit messages are found in repositories that use the Shell programming language and are licensed under Apache-2.0, where each message exists, is shorter than 1,000 characters, and does not begin with 'merge', 'update', or 'test'?*
 

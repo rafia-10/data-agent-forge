@@ -1248,6 +1248,8 @@ def _precompute_github_repos(tool_results, question):
         swift_repos = [r['repo_name'] for r in sq(
             "SELECT repo_name FROM languages WHERE language_description LIKE '%Swift%'"
         )]
+        if not swift_repos:
+            return {}
         best_copies = 0
         best_repo = None
         chunk_size = 500
@@ -1255,20 +1257,23 @@ def _precompute_github_repos(tool_results, question):
             chunk = swift_repos[i:i+chunk_size]
             placeholders = ', '.join(f"'{r.replace(chr(39), chr(39)*2)}'" for r in chunk)
             rows = dq(f"""
-                SELECT id, sample_repo_name,
-                    CAST(regexp_extract(repo_data_description,
+                SELECT f.repo_name, c.id,
+                    CAST(regexp_extract(c.repo_data_description,
                         '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) AS INTEGER) as copies
-                FROM contents
-                WHERE sample_repo_name IN ({placeholders})
-                  AND sample_path LIKE '%.swift'
-                  AND repo_data_description ILIKE '%non-binary%'
-                  AND regexp_extract(repo_data_description,
+                FROM files f
+                JOIN contents c ON f.id = c.id
+                WHERE f.repo_name IN ({placeholders})
+                  AND f.path LIKE '%.swift'
+                  AND c.repo_data_description ILIKE '%non-binary%'
+                  AND regexp_extract(c.repo_data_description,
                         '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) != ''
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY copies DESC) = 1
+                ORDER BY copies DESC
+                LIMIT 1
             """)
-            for row in rows:
-                if row.get('copies') and row['copies'] > best_copies:
-                    best_copies = row['copies']
-                    best_repo = row['sample_repo_name']
+            if rows and rows[0]['copies'] and rows[0]['copies'] > best_copies:
+                best_copies = rows[0]['copies']
+                best_repo = rows[0]['repo_name']
         return {'short_circuit': True, 'answer': best_repo} if best_repo else {}
 
     # ── Q3: count commit messages in Shell+Apache-2.0 repos, filtered ──
