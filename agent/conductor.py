@@ -397,6 +397,11 @@ def synthesize_node(state: AgentState) -> AgentState:
         state["answer"] = pre_computed["top5_output"]
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
+    
+    if dataset == "music_brainz" and pre_computed.get("short_circuit"):
+        state["answer"] = pre_computed["answer"]
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
 
     if dataset == "googlelocal" and pre_computed:
         question_lower = state["question"].lower()
