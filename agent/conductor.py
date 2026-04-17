@@ -383,7 +383,7 @@ def synthesize_node(state: AgentState) -> AgentState:
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
 
-    if dataset == "googlelocal" and pre_computed.get("businesses_by_rating"):
+    if dataset == "googlelocal" and pre_computed:
         question_lower = state["question"].lower()
         is_ranking_query = any(w in question_lower for w in ["top 5", "top 3", "top five", "ranked by", "highest average rating"])
         is_massage_query = any(w in question_lower for w in ["massage", "spa", "therapy", "oriental"])
@@ -398,7 +398,7 @@ def synthesize_node(state: AgentState) -> AgentState:
             return state
 
         # Q1 — only fires when NOT an hours query
-        if is_ranking_query and not is_hours_query:
+        if is_ranking_query and not is_hours_query and pre_computed.get("businesses_by_rating"):
             state["answer"] = pre_computed["top_5_names"]
             state["trace"].append({"node": "synthesize", "answer": state["answer"]})
             return state
