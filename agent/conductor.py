@@ -377,6 +377,8 @@ def synthesize_node(state: AgentState) -> AgentState:
         pre_computed = _precompute_deps_dev(state["tool_results"], state["question"])
     elif dataset == "stockindex":
         pre_computed = _precompute_stockindex(state["tool_results"], state["question"])
+    elif dataset == "music_brainz":
+        pre_computed = _precompute_music_brainz(state["tool_results"], state["question"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
     
