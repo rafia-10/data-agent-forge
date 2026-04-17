@@ -373,13 +373,21 @@ def synthesize_node(state: AgentState) -> AgentState:
         pre_computed = _precompute_stockmarket_filter(state["tool_results"], state["question"])
     elif dataset == "googlelocal":
         pre_computed = _precompute_googlelocal(state["tool_results"], state["question"])
+    elif dataset == "deps_dev":
+        pre_computed = _precompute_deps_dev(state["tool_results"], state["question"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
+    
 
     # ── SHORT-CIRCUIT: bypass LLM for datasets where precompute gives final answer ──
     if dataset == "stockmarket" and pre_computed.get("companies"):
         companies_str = "\n".join(pre_computed["companies"])
         state["answer"] = f"{companies_str}\nTotal: {pre_computed['count']}"
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
+    
+    if dataset == "deps_dev" and pre_computed.get("top_packages"):
+        state["answer"] = pre_computed["top5_output"]
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
 
@@ -865,6 +873,108 @@ def _precompute_yelp(tool_results: list[dict]) -> dict:
             for s in sorted(state_reviews, key=lambda x: state_reviews[x], reverse=True)
         },
     }
+
+
+
+def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
+    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info"""
+    import requests, re
+
+    def extract_stars(pi):
+        m = re.search(r'(\d[\d,]*)\s+stars', pi)
+        if m:
+            return int(m.group(1).replace(',', ''))
+        m = re.search(r'stars\s+count\s+of\s+([\d,]+)', pi)
+        if m:
+            return int(m.group(1).replace(',', ''))
+        return 0
+
+    def extract_proj_name(pi):
+        m = re.search(r'project\s+(\S+/\S+)\s+(?:on|is|named)', pi)
+        if m:
+            return m.group(1).rstrip('.,')
+        return None
+
+    try:
+        # Step 1 — SQLite: get latest release per NPM package
+        r1 = requests.post("http://127.0.0.1:5000/v1/tools/query_sqlite_deps_dev_package",
+            json={"sql": """SELECT DISTINCT Name, Version, VersionInfo
+                FROM packageinfo
+                WHERE System='NPM'
+                AND VersionInfo LIKE '%\"IsRelease\": true%'"""},
+            timeout=60)
+        rows = r1.json().get("result", [])
+
+        # Keep latest per package (max Ordinal) — deduplicate
+        latest = {}
+        for row in rows:
+            name = row["Name"]
+            try:
+                ordinal = int(re.search(r'"Ordinal":\s*(\d+)', row["VersionInfo"]).group(1))
+            except:
+                ordinal = 0
+            if name not in latest or ordinal > latest[name]["ordinal"]:
+                latest[name] = {"version": row["Version"], "ordinal": ordinal}
+
+        # Step 2 — DuckDB: get ALL ProjectName mappings for NPM
+        r2 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
+            json={"sql": "SELECT DISTINCT Name, Version, ProjectName FROM project_packageversion WHERE System='NPM'"},
+            timeout=60)
+        ppv_rows = r2.json().get("result", [])
+
+        # Map package -> ProjectName (only for latest version)
+        pkg_to_proj = {}
+        for row in ppv_rows:
+            n, v = row["Name"], row["Version"]
+            if n in latest and latest[n]["version"] == v:
+                pkg_to_proj[n] = row["ProjectName"]
+
+        # Step 3 — DuckDB: get all project_info stars
+        r3 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
+            json={"sql": "SELECT Project_Information FROM project_info"},
+            timeout=30)
+        pi_rows = r3.json().get("result", [])
+
+        # Build ProjectName -> stars map
+        proj_stars = {}
+        for row in pi_rows:
+            pi = row["Project_Information"]
+            proj_name = extract_proj_name(pi)
+            if proj_name:
+                stars = extract_stars(pi)
+                proj_stars[proj_name] = stars
+
+        # Join: package -> stars
+        results = []
+        for pkg_name, proj_name in pkg_to_proj.items():
+            if proj_name in proj_stars:
+                results.append({
+                    "name": pkg_name,
+                    "version": latest[pkg_name]["version"],
+                    "stars": proj_stars[proj_name],
+                    "project": proj_name
+                })
+
+        # Sort by stars DESC then name ASC
+        results.sort(key=lambda x: (-x["stars"], x["name"]))
+
+        # Return enough results to cover all tied packages at the cutoff
+        # Include all packages with stars >= the 5th highest star count
+        if len(results) >= 5:
+            cutoff_stars = results[4]["stars"]
+            top_results = [r for r in results if r["stars"] >= cutoff_stars]
+        else:
+            top_results = results
+
+        return {
+            "top_packages": top_results,
+            "top5_output": "\n".join(f"{r['name']},{r['version']}" for r in top_results[:20])
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 
 
 def _precompute_googlelocal(tool_results: list[dict], question: str = "") -> dict:
