@@ -955,7 +955,11 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
                     }
 
         matched = sorted(best.values(), key=lambda x: (-x["stars"], x["name"]))
-        top5 = matched[:5]
+        if len(matched) >= 5:
+            cutoff = matched[4]["stars"]
+            top5 = [m for m in matched if m["stars"] >= cutoff]
+        else:
+            top5 = matched
         top5_output = "\n".join(f"{r['name']},{r['version']}" for r in top5)
 
         return {
