@@ -149,15 +149,10 @@ SELECT symbol, "titleFull" FROM cpc_definition WHERE level = 5.0 AND status = 'p
 ```
 
 Step 2 — SQLite: get filing year and cpc text for all patents:
-SELECT 
-  SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS year,
-  cpc,
-  COUNT(*) as filing_count
+SELECT SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS year, cpc
 FROM publicationinfo
-WHERE filing_date IS NOT NULL 
-  AND cpc IS NOT NULL
-  AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2015 AND 2023
-GROUP BY year, cpc
+WHERE filing_date IS NOT NULL AND cpc IS NOT NULL
+AND CAST(SUBSTR(filing_date, LENGTH(filing_date)-3, 4) AS INTEGER) BETWEEN 2018 AND 2022
 ORDER BY year
 ```
 
