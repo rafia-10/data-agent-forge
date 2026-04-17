@@ -1116,8 +1116,9 @@ def _precompute_music_brainz(tool_results: list[dict], question: str = "") -> di
         if "street hype" in q or "maginnis" in q:
             r1 = requests.post("http://127.0.0.1:5000/v1/tools/query_sqlite_music_brainz",
                 json={"sql": """
-                    SELECT track_id FROM tracks
+                    SELECT track_id, title, artist FROM tracks
                     WHERE title LIKE '%Street Hype%'
+                      AND title NOT LIKE '%Groove City%'
                       AND artist LIKE '%Maginnis%'
                 """},
                 timeout=30)
