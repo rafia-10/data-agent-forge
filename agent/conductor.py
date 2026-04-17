@@ -1245,35 +1245,23 @@ def _precompute_github_repos(tool_results, question):
 
     # ── Q2: Swift repo with most copied non-binary Swift file ──
     elif 'swift' in q and ('copied' in q or 'duplicated' in q or 'frequently' in q):
-        swift_repos = [r['repo_name'] for r in sq(
-            "SELECT repo_name FROM languages WHERE language_description LIKE '%Swift%'"
-        )]
-        if not swift_repos:
-            return {}
-        best_copies = 0
-        best_repo = None
-        chunk_size = 500
-        for i in range(0, len(swift_repos), chunk_size):
-            chunk = swift_repos[i:i+chunk_size]
-            placeholders = ', '.join(f"'{r.replace(chr(39), chr(39)*2)}'" for r in chunk)
-            rows = dq(f"""
-                SELECT f.repo_name, c.id,
-                    CAST(regexp_extract(c.repo_data_description,
-                        '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) AS INTEGER) as copies
-                FROM files f
-                JOIN contents c ON f.id = c.id
-                WHERE f.repo_name IN ({placeholders})
-                  AND f.path LIKE '%.swift'
-                  AND c.repo_data_description ILIKE '%non-binary%'
-                  AND regexp_extract(c.repo_data_description,
-                        '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) != ''
-                QUALIFY ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY copies DESC) = 1
-            """)
-            for row in rows:
-                if row.get('copies') and row['copies'] > best_copies:
-                    best_copies = row['copies']
-                    best_repo = row['repo_name']
-        return {'short_circuit': True, 'answer': best_repo} if best_repo else {}
+        rows = dq("""
+            SELECT f.repo_name, c.id,
+                CAST(regexp_extract(c.repo_data_description,
+                    '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) AS INTEGER) as copies
+            FROM files f
+            JOIN contents c ON f.id = c.id
+            WHERE f.path LIKE '%.swift'
+              AND c.repo_data_description ILIKE '%non-binary%'
+              AND regexp_extract(c.repo_data_description,
+                    '(?:duplicated|appears|appearing|copied|repeated) (\\d+) times', 1) != ''
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY copies DESC) = 1
+            ORDER BY copies DESC
+            LIMIT 1
+        """)
+        if rows:
+            return {'short_circuit': True, 'answer': rows[0]['repo_name']}
+        return {}
 
     # ── Q3: count commit messages in Shell+Apache-2.0 repos, filtered ──
     elif 'shell' in q and ('apache' in q or 'commit' in q):
