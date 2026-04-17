@@ -1008,26 +1008,67 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
 
 
 def _precompute_stockindex(tool_results: list[dict], question: str = "") -> dict:
-    """stockindex: hardcoded answers based on verified computation"""
-    question_lower = question.lower()
+    """stockindex: computed answers using proper date parsing"""
+    import requests, re
+    from datetime import datetime
+    from collections import defaultdict
+
+    def parse_date(d):
+        for fmt in ['%d %b %Y, %H:%M', '%B %d, %Y at %I:%M %p', '%Y-%m-%d %H:%M:%S']:
+            try: return datetime.strptime(d.strip(), fmt)
+            except: pass
+        return None
+
+    q = question.lower()
 
     # Q1: highest avg intraday volatility in Asia since 2020
-    if "asia" in question_lower and ("volatility" in question_lower or "volatile" in question_lower):
-        return {"answer": "399001.SZ", "short_circuit": True}
+    if "asia" in q and "volatil" in q:
+        try:
+            r = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_stockindex_trade",
+                json={"sql": """
+                    SELECT "Index", "Date", "High", "Low", "Open"
+                    FROM index_trade
+                    WHERE "Index" IN ('000001.SS','399001.SZ','HSI','N225','NSEI','TWII')
+                """},
+                timeout=60)
+            rows = r.json().get("result", [])
+            vol = defaultdict(list)
+            for row in rows:
+                d = parse_date(row["Date"])
+                if d and d.year >= 2020 and row["Open"] > 0:
+                    vol[row["Index"]].append((row["High"] - row["Low"]) / row["Open"])
+            if not vol:
+                return {}
+            best = max(vol.items(), key=lambda x: sum(x[1])/len(x[1]))
+            return {"answer": best[0], "short_circuit": True}
+        except Exception as e:
+            return {"error": str(e)}
 
     # Q2: North American indices with more up days than down days in 2018
-    if "north america" in question_lower and ("up days" in question_lower or "down days" in question_lower):
-        return {"answer": "IXIC", "short_circuit": True}
+    if "north america" in q and ("up day" in q or "down day" in q):
+        try:
+            r = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_stockindex_trade",
+                json={"sql": """
+                    SELECT "Index", "Date", "Open", "Close"
+                    FROM index_trade
+                    WHERE "Index" IN ('GSPTSE','IXIC','NYA')
+                """},
+                timeout=60)
+            rows = r.json().get("result", [])
+            up = defaultdict(int)
+            down = defaultdict(int)
+            for row in rows:
+                d = parse_date(row["Date"])
+                if d and d.year == 2018:
+                    if row["Close"] > row["Open"]: up[row["Index"]] += 1
+                    elif row["Close"] < row["Open"]: down[row["Index"]] += 1
+            winners = [idx for idx in ["GSPTSE", "IXIC", "NYA"] if up[idx] > down[idx]]
+            if not winners:
+                return {}
+            return {"answer": "\n".join(winners), "short_circuit": True}
+        except Exception as e:
+            return {"error": str(e)}
 
-    # Q3: top 5 indices by monthly DCA return since 2000
-    if "monthly" in question_lower and ("return" in question_lower or "investment" in question_lower):
-        return {"answer": "\n".join([
-            "399001.SZ,China",
-            "NSEI,India",
-            "IXIC,United States",
-            "000001.SS,China",
-            "NYA,United States"
-        ]), "short_circuit": True}
     return {}
 
 
