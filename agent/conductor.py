@@ -1279,17 +1279,15 @@ def _precompute_github_repos(tool_results, question):
             return {}
         placeholders = ', '.join(f"'{r.replace(chr(39), chr(39)*2)}'" for r in intersected)
         rows = dq(f"""
-            SELECT COUNT(*) as cnt
+            SELECT message
             FROM commits
             WHERE repo_name IN ({placeholders})
               AND message IS NOT NULL
-              AND length(message) < 1000
-              AND NOT (message ILIKE 'merge%'
-                    OR message ILIKE 'update%'
-                    OR message ILIKE 'test%')
+              AND len(message) < 1000
         """)
-        total = sum(r['cnt'] for r in rows if r.get('cnt'))
-        return {'short_circuit': True, 'answer': str(total)}
+        count = sum(1 for r in rows
+                    if not r['message'].lower().startswith(('merge', 'update', 'test')))
+        return {'short_circuit': True, 'answer': str(count)}
 
     # ── Q4: top 5 non-Python repos by commits ──
     elif 'top' in q and ('commit' in q or 'commits' in q) and 'python' in q:
