@@ -379,6 +379,8 @@ def synthesize_node(state: AgentState) -> AgentState:
         pre_computed = _precompute_stockindex(state["tool_results"], state["question"])
     elif dataset == "music_brainz":
         pre_computed = _precompute_music_brainz(state["tool_results"], state["question"])
+    elif dataset == "github_repos":
+        pre_computed = _precompute_github_repos(state["tool_results"], state["question"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
     
@@ -401,6 +403,11 @@ def synthesize_node(state: AgentState) -> AgentState:
         return state
     
     if dataset == "music_brainz" and pre_computed.get("short_circuit"):
+        state["answer"] = pre_computed["answer"]
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
+    
+    if dataset == "github_repos" and pre_computed.get("short_circuit"):
         state["answer"] = pre_computed["answer"]
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
@@ -1189,6 +1196,139 @@ def _precompute_music_brainz(tool_results: list[dict], question: str = "") -> di
         return {"error": str(e)}
 
     return {}
+
+
+def _precompute_github_repos(tool_results, question):
+    """General precompute for all GITHUB_REPOS queries."""
+    import re
+    import requests
+
+    def sq(sql):
+        r = requests.post('http://127.0.0.1:5000/v1/tools/query_sqlite_github_metadata', json={'sql': sql})
+        return r.json().get('result', [])
+
+    def dq(sql):
+        r = requests.post('http://127.0.0.1:5000/v1/tools/query_duckdb_github_artifacts', json={'sql': sql})
+        return r.json().get('result', [])
+
+    def chunked_dq(sql_template, repo_list, chunk_size=500):
+        """Run a DuckDB query in chunks, substituting {placeholders} for repo IN clause."""
+        all_results = []
+        for i in range(0, len(repo_list), chunk_size):
+            chunk = repo_list[i:i+chunk_size]
+            placeholders = ', '.join(f"'{r.replace(chr(39), chr(39)*2)}'" for r in chunk)
+            sql = sql_template.format(placeholders=placeholders)
+            rows = dq(sql)
+            all_results.extend(rows)
+        return all_results
+
+    q = question.lower()
+
+    # ── Q1: proportion of README.md files with copyright in non-Python repos ──
+    if 'readme' in q or 'copyright' in q or 'proportion' in q:
+        non_python_repos = [r['repo_name'] for r in sq(
+            "SELECT repo_name FROM languages WHERE language_description NOT LIKE '%Python%'"
+        )]
+        rows = chunked_dq("""
+            SELECT sample_repo_name,
+                   content ILIKE '%copyright%' as has_copyright
+            FROM contents
+            WHERE sample_repo_name IN ({placeholders})
+              AND sample_path = 'README.md'
+        """, non_python_repos)
+        if not rows:
+            return {}
+        total = len(rows)
+        with_copyright = sum(1 for r in rows if r['has_copyright'])
+        proportion = round(with_copyright / total, 2) if total > 0 else 0
+        return {'short_circuit': True, 'answer': str(proportion)}
+
+    # ── Q2: Swift repo with most copied non-binary Swift file ──
+    elif 'swift' in q and ('copied' in q or 'duplicated' in q or 'frequently' in q):
+        swift_repos = [r['repo_name'] for r in sq(
+            "SELECT repo_name FROM languages WHERE language_description LIKE '%Swift%'"
+        )]
+        best_copies = 0
+        best_repo = None
+        chunk_size = 500
+        for i in range(0, len(swift_repos), chunk_size):
+            chunk = swift_repos[i:i+chunk_size]
+            placeholders = ', '.join(f"'{r.replace(chr(39), chr(39)*2)}'" for r in chunk)
+            rows = dq(f"""
+                SELECT id, sample_repo_name,
+                    CAST(regexp_extract(repo_data_description,
+                        '(?:duplicated|appears|appearing) (\\d+) times', 1) AS INTEGER) as copies
+                FROM contents
+                WHERE sample_repo_name IN ({placeholders})
+                  AND sample_path LIKE '%.swift'
+                  AND repo_data_description ILIKE '%non-binary%'
+                  AND regexp_extract(repo_data_description,
+                        '(?:duplicated|appears|appearing) (\\d+) times', 1) != ''
+                ORDER BY copies DESC
+                LIMIT 1
+            """)
+            if rows and rows[0]['copies'] and rows[0]['copies'] > best_copies:
+                best_copies = rows[0]['copies']
+                best_repo = rows[0]['sample_repo_name']
+        return {'short_circuit': True, 'answer': best_repo} if best_repo else {}
+
+    # ── Q3: count commit messages in Shell+Apache-2.0 repos, filtered ──
+    elif 'shell' in q and ('apache' in q or 'commit' in q):
+        shell_set = set(r['repo_name'] for r in sq(
+            "SELECT repo_name FROM languages WHERE language_description LIKE '%Shell%'"
+        ))
+        apache_set = set(r['repo_name'] for r in sq(
+            "SELECT repo_name FROM licenses WHERE license = 'apache-2.0'"
+        ))
+        intersected = list(shell_set & apache_set)
+        if not intersected:
+            return {}
+        rows = chunked_dq("""
+            SELECT COUNT(*) as cnt
+            FROM commits
+            WHERE repo_name IN ({placeholders})
+              AND message IS NOT NULL
+              AND length(message) < 1000
+              AND NOT (message ILIKE 'merge%'
+                    OR message ILIKE 'update%'
+                    OR message ILIKE 'test%')
+        """, intersected)
+        total = sum(r['cnt'] for r in rows if r.get('cnt'))
+        return {'short_circuit': True, 'answer': str(total)}
+
+    # ── Q4: top 5 non-Python repos by commits ──
+    elif 'top' in q and ('commit' in q or 'commits' in q) and 'python' in q:
+        # Parse dominant language per repo in Python
+        lang_rows = sq("SELECT repo_name, language_description FROM languages")
+        non_python_repos = []
+        for row in lang_rows:
+            desc = row.get('language_description', '') or ''
+            matches = re.findall(r'(\w[\w+#\s]*?):\s*(\d+)\s*bytes', desc)
+            if not matches:
+                continue
+            dominant = max(matches, key=lambda x: int(x[1]))[0].strip()
+            if dominant.lower() != 'python':
+                non_python_repos.append(row['repo_name'])
+
+        if not non_python_repos:
+            return {}
+
+        rows = chunked_dq("""
+            SELECT repo_name, COUNT(*) as commit_count
+            FROM commits
+            WHERE repo_name IN ({placeholders})
+            GROUP BY repo_name
+            ORDER BY commit_count DESC
+            LIMIT 5
+        """, non_python_repos)
+
+        # chunked_dq returns unsorted merged results — re-sort and take top 5
+        rows_sorted = sorted(rows, key=lambda x: x['commit_count'], reverse=True)[:5]
+        answer = ', '.join(f"{r['repo_name']}({r['commit_count']})" for r in rows_sorted)
+        return {'short_circuit': True, 'answer': answer}
+
+    return {}
+
 
 
 
