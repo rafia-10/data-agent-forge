@@ -877,17 +877,26 @@ def _precompute_yelp(tool_results: list[dict]) -> dict:
 
 
 def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
-    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info
-    Join strategy:
-      1. SQLite: get (Name, Version) of latest release per NPM MIT package
-      2. DuckDB: join project_packageversion to project_info via regexp_extract(Project_Information)
-         to get fork counts — no CTE (CTE breaks DuckDB here), raw join only
-      3. Python: cross-filter DuckDB results against SQLite MIT latest set, rank by forks
-    """
+    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info"""
     import requests, re
 
+    def extract_stars(text):
+        # Pattern 1: "X stars" or "X,XXX stars"
+        m = re.search(r'([\d,]+)\s+stars', text)
+        if m:
+            return int(m.group(1).replace(',', ''))
+        # Pattern 2: "stars count of X"
+        m = re.search(r'stars\s+count\s+of\s+([\d,]+)', text)
+        if m:
+            return int(m.group(1).replace(',', ''))
+        # Pattern 3: "a remarkable stars count of X"
+        m = re.search(r'stars\s+count\s+of\s+([\d,]+)', text, re.IGNORECASE)
+        if m:
+            return int(m.group(1).replace(',', ''))
+        return 0
+
     try:
-        # Step 1 — SQLite: latest release version per NPM MIT package
+        # Step 1 — SQLite: all NPM latest releases (no license filter)
         r1 = requests.post("http://127.0.0.1:5000/v1/tools/query_sqlite_deps_dev_package",
             json={"sql": """
                 SELECT DISTINCT p.Name, p.Version
@@ -896,35 +905,32 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
                     SELECT Name, MAX(json_extract(VersionInfo, '$.Ordinal')) as max_ord
                     FROM packageinfo
                     WHERE System='NPM'
-                      AND Licenses LIKE '%MIT%'
                       AND json_extract(VersionInfo, '$.IsRelease') = 1
                     GROUP BY Name
                 ) latest ON p.Name = latest.Name
                   AND json_extract(p.VersionInfo, '$.Ordinal') = latest.max_ord
                 WHERE p.System='NPM'
-                  AND p.Licenses LIKE '%MIT%'
                   AND json_extract(p.VersionInfo, '$.IsRelease') = 1
             """},
             timeout=60)
-        mit_latest = {(r["Name"], r["Version"]) for r in r1.json().get("result", [])}
+        all_latest = {(r["Name"], r["Version"]) for r in r1.json().get("result", [])}
 
-        if not mit_latest:
-            return {"error": "SQLite returned no MIT latest releases"}
+        if not all_latest:
+            return {"error": "SQLite returned no latest releases"}
 
-        # Step 2 — DuckDB: join packageversion to project_info via extracted ProjectName
-        # NOTE: must use raw JOIN, not CTE — CTE causes empty results in this DuckDB instance
+        # Step 2 — DuckDB: join packageversion to project_info, get raw Project_Information
+        # No ORDER BY, no CAST — those break the query; sort in Python instead
         r2 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
             json={"sql": """
                 SELECT
                     pv.Name,
                     pv.Version,
                     pv.ProjectName,
-                    regexp_extract(pi.Project_Information, '([0-9,]+) forks', 1) as forks_raw
+                    pi.Project_Information
                 FROM project_info pi
                 JOIN project_packageversion pv
                     ON pv.ProjectName = regexp_extract(pi.Project_Information, 'The project ([^ ]+)', 1)
                 WHERE pv.System = 'NPM'
-                  AND pv.Name NOT LIKE '%>%'
             """},
             timeout=60)
         duckdb_rows = r2.json().get("result", [])
@@ -932,24 +938,22 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
         if not duckdb_rows:
             return {"error": "DuckDB join returned no rows"}
 
-        # Step 3 — Python: cross-filter MIT latest, parse forks, rank
+        # Step 3 — Python: cross-filter, extract stars with multi-pattern regex, rank
         seen = set()
         matched = []
         for row in duckdb_rows:
             key = (row["Name"], row["Version"])
-            if key in mit_latest and key not in seen:
+            if key in all_latest and key not in seen:
                 seen.add(key)
-                forks_str = row.get("forks_raw", "") or ""
-                forks = int(forks_str.replace(",", "")) if forks_str.strip() else 0
+                stars = extract_stars(row.get("Project_Information", ""))
                 matched.append({
                     "name": row["Name"],
                     "version": row["Version"],
-                    "forks": forks,
+                    "stars": stars,
                     "project": row["ProjectName"]
                 })
 
-        matched.sort(key=lambda x: (-x["forks"], x["name"]))
-
+        matched.sort(key=lambda x: (-x["stars"], x["name"]))
         top5 = matched[:5]
         top5_output = "\n".join(f"{r['name']},{r['version']}" for r in top5)
 
