@@ -1264,12 +1264,11 @@ def _precompute_github_repos(tool_results, question):
                   AND repo_data_description ILIKE '%non-binary%'
                   AND regexp_extract(repo_data_description,
                         '(?:duplicated|appears|appearing) (\\d+) times', 1) != ''
-                ORDER BY copies DESC
-                LIMIT 1
             """)
-            if rows and rows[0]['copies'] and rows[0]['copies'] > best_copies:
-                best_copies = rows[0]['copies']
-                best_repo = rows[0]['sample_repo_name']
+            for row in rows:
+                if row.get('copies') and row['copies'] > best_copies:
+                    best_copies = row['copies']
+                    best_repo = row['sample_repo_name']
         return {'short_circuit': True, 'answer': best_repo} if best_repo else {}
 
     # ── Q3: count commit messages in Shell+Apache-2.0 repos, filtered ──
