@@ -371,6 +371,8 @@ def synthesize_node(state: AgentState) -> AgentState:
         pre_computed = _precompute_agnews_category(state["tool_results"], state["question"])
     elif dataset == "stockmarket":
         pre_computed = _precompute_stockmarket_filter(state["tool_results"], state["question"])
+    elif dataset == "googlelocal":
+        pre_computed = _precompute_googlelocal(state["tool_results"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
 
@@ -378,6 +380,11 @@ def synthesize_node(state: AgentState) -> AgentState:
     if dataset == "stockmarket" and pre_computed.get("companies"):
         companies_str = "\n".join(pre_computed["companies"])
         state["answer"] = f"{companies_str}\nTotal: {pre_computed['count']}"
+        state["trace"].append({"node": "synthesize", "answer": state["answer"]})
+        return state
+
+    if dataset == "googlelocal" and pre_computed.get("businesses_by_rating"):
+        state["answer"] = pre_computed["top_5_names"]
         state["trace"].append({"node": "synthesize", "answer": state["answer"]})
         return state
 
@@ -835,6 +842,8 @@ def _precompute_yelp(tool_results: list[dict]) -> dict:
 
 def _precompute_googlelocal(tool_results: list[dict]) -> dict:
     """GoogleLocal: PostgreSQL business + SQLite review join on gmap_id."""
+    from collections import defaultdict
+
     pg_results     = [r for r in tool_results if r.get("db_type") == "postgres"]
     sqlite_results = [r for r in tool_results if r.get("db_type") == "sqlite"]
 
@@ -853,37 +862,60 @@ def _precompute_googlelocal(tool_results: list[dict]) -> dict:
     if not gmap_name:
         return {}
 
-    # gmap_id → {avg_rating, review_count} from SQLite
-    gmap_ratings = {}
+    # gmap_id → list of ratings from SQLite
+    # Handles BOTH raw rows (one rating per row) AND pre-aggregated rows (avg_rating column)
+    gmap_ratings = defaultdict(list)
+    gmap_agg = {}  # for pre-aggregated results
+
     for sr in sqlite_results:
         for row in sr.get("result", []):
             gid = row.get("gmap_id", "")
-            if gid:
-                avg = row.get("avg_rating", row.get("rating", 0))
-                cnt = row.get("review_count", row.get("count", 1))
-                gmap_ratings[gid] = {"avg_rating": avg, "review_count": cnt}
+            if not gid:
+                continue
+            # Case 1: pre-aggregated row has avg_rating column
+            if "avg_rating" in row:
+                gmap_agg[gid] = {
+                    "avg_rating":   float(row["avg_rating"]),
+                    "review_count": int(row.get("review_count", row.get("cnt", row.get("count", 1))))
+                }
+            # Case 2: raw review row has individual rating
+            elif "rating" in row and row["rating"] is not None:
+                gmap_ratings[gid].append(float(row["rating"]))
 
-    # join and rank
+    # Build final ratings map — prefer pre-aggregated, fall back to computing from raw
+    final_ratings = {}
+    for gid in set(list(gmap_agg.keys()) + list(gmap_ratings.keys())):
+        if gid in gmap_agg:
+            final_ratings[gid] = gmap_agg[gid]
+        elif gid in gmap_ratings and gmap_ratings[gid]:
+            vals = gmap_ratings[gid]
+            final_ratings[gid] = {
+                "avg_rating":   sum(vals) / len(vals),
+                "review_count": len(vals)
+            }
+
+    # Join businesses with ratings and rank
     joined = []
     for gid, name in gmap_name.items():
-        if gid in gmap_ratings:
+        if gid in final_ratings:
             joined.append({
                 "name":         name,
                 "gmap_id":      gid,
-                "avg_rating":   gmap_ratings[gid]["avg_rating"],
-                "review_count": gmap_ratings[gid]["review_count"],
+                "avg_rating":   final_ratings[gid]["avg_rating"],
+                "review_count": final_ratings[gid]["review_count"],
             })
 
     if not joined:
         return {}
 
-    joined.sort(key=lambda x: x["avg_rating"], reverse=True)
+    # Sort by avg_rating DESC, then review_count DESC, then name ASC for tie-breaking
+    joined.sort(key=lambda x: (-x["avg_rating"], -x["review_count"], x["name"]))
+
     return {
         "businesses_by_rating": joined,
         "top_business":         joined[0]["name"] if joined else None,
         "top_5_names":          ", ".join(b["name"] for b in joined[:5]),
     }
-
 
 
 # ── routing ───────────────────────────────────────────────────────────────────
