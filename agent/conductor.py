@@ -877,98 +877,85 @@ def _precompute_yelp(tool_results: list[dict]) -> dict:
 
 
 def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
-    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info"""
+    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info
+    Join strategy:
+      1. SQLite: get (Name, Version) of latest release per NPM MIT package
+      2. DuckDB: join project_packageversion to project_info via regexp_extract(Project_Information)
+         to get fork counts — no CTE (CTE breaks DuckDB here), raw join only
+      3. Python: cross-filter DuckDB results against SQLite MIT latest set, rank by forks
+    """
     import requests, re
 
-    def extract_stars(pi):
-        m = re.search(r'(\d[\d,]*)\s+stars', pi)
-        if m:
-            return int(m.group(1).replace(',', ''))
-        m = re.search(r'stars\s+count\s+of\s+([\d,]+)', pi)
-        if m:
-            return int(m.group(1).replace(',', ''))
-        return 0
-
-    def extract_proj_name(pi):
-        m = re.search(r'project\s+(\S+/\S+)\s+(?:on|is|named)', pi)
-        if m:
-            return m.group(1).rstrip('.,')
-        return None
-
     try:
-        # Step 1 — SQLite: get latest release per NPM package
+        # Step 1 — SQLite: latest release version per NPM MIT package
         r1 = requests.post("http://127.0.0.1:5000/v1/tools/query_sqlite_deps_dev_package",
-            json={"sql": """SELECT DISTINCT Name, Version, VersionInfo
-                FROM packageinfo
-                WHERE System='NPM'
-                AND VersionInfo LIKE '%\"IsRelease\": true%'"""},
+            json={"sql": """
+                SELECT DISTINCT p.Name, p.Version
+                FROM packageinfo p
+                INNER JOIN (
+                    SELECT Name, MAX(json_extract(VersionInfo, '$.Ordinal')) as max_ord
+                    FROM packageinfo
+                    WHERE System='NPM'
+                      AND Licenses LIKE '%MIT%'
+                      AND json_extract(VersionInfo, '$.IsRelease') = 1
+                    GROUP BY Name
+                ) latest ON p.Name = latest.Name
+                  AND json_extract(p.VersionInfo, '$.Ordinal') = latest.max_ord
+                WHERE p.System='NPM'
+                  AND p.Licenses LIKE '%MIT%'
+                  AND json_extract(p.VersionInfo, '$.IsRelease') = 1
+            """},
             timeout=60)
-        rows = r1.json().get("result", [])
+        mit_latest = {(r["Name"], r["Version"]) for r in r1.json().get("result", [])}
 
-        # Keep latest per package (max Ordinal) — deduplicate
-        latest = {}
-        for row in rows:
-            name = row["Name"]
-            try:
-                ordinal = int(re.search(r'"Ordinal":\s*(\d+)', row["VersionInfo"]).group(1))
-            except:
-                ordinal = 0
-            if name not in latest or ordinal > latest[name]["ordinal"]:
-                latest[name] = {"version": row["Version"], "ordinal": ordinal}
+        if not mit_latest:
+            return {"error": "SQLite returned no MIT latest releases"}
 
-        # Step 2 — DuckDB: get ALL ProjectName mappings for NPM
+        # Step 2 — DuckDB: join packageversion to project_info via extracted ProjectName
+        # NOTE: must use raw JOIN, not CTE — CTE causes empty results in this DuckDB instance
         r2 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
-            json={"sql": "SELECT DISTINCT Name, Version, ProjectName FROM project_packageversion WHERE System='NPM'"},
+            json={"sql": """
+                SELECT
+                    pv.Name,
+                    pv.Version,
+                    pv.ProjectName,
+                    regexp_extract(pi.Project_Information, '([0-9,]+) forks', 1) as forks_raw
+                FROM project_info pi
+                JOIN project_packageversion pv
+                    ON pv.ProjectName = regexp_extract(pi.Project_Information, 'The project ([^ ]+)', 1)
+                WHERE pv.System = 'NPM'
+                  AND pv.Name NOT LIKE '%>%'
+            """},
             timeout=60)
-        ppv_rows = r2.json().get("result", [])
+        duckdb_rows = r2.json().get("result", [])
 
-        # Map package -> ProjectName (only for latest version)
-        pkg_to_proj = {}
-        for row in ppv_rows:
-            n, v = row["Name"], row["Version"]
-            if n in latest and latest[n]["version"] == v:
-                pkg_to_proj[n] = row["ProjectName"]
+        if not duckdb_rows:
+            return {"error": "DuckDB join returned no rows"}
 
-        # Step 3 — DuckDB: get all project_info stars
-        r3 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
-            json={"sql": "SELECT Project_Information FROM project_info"},
-            timeout=30)
-        pi_rows = r3.json().get("result", [])
-
-        # Build ProjectName -> stars map
-        proj_stars = {}
-        for row in pi_rows:
-            pi = row["Project_Information"]
-            proj_name = extract_proj_name(pi)
-            if proj_name:
-                stars = extract_stars(pi)
-                proj_stars[proj_name] = stars
-
-        # Join: package -> stars
-        results = []
-        for pkg_name, proj_name in pkg_to_proj.items():
-            if proj_name in proj_stars:
-                results.append({
-                    "name": pkg_name,
-                    "version": latest[pkg_name]["version"],
-                    "stars": proj_stars[proj_name],
-                    "project": proj_name
+        # Step 3 — Python: cross-filter MIT latest, parse forks, rank
+        seen = set()
+        matched = []
+        for row in duckdb_rows:
+            key = (row["Name"], row["Version"])
+            if key in mit_latest and key not in seen:
+                seen.add(key)
+                forks_str = row.get("forks_raw", "") or ""
+                forks = int(forks_str.replace(",", "")) if forks_str.strip() else 0
+                matched.append({
+                    "name": row["Name"],
+                    "version": row["Version"],
+                    "forks": forks,
+                    "project": row["ProjectName"]
                 })
 
-        # Sort by stars DESC then name ASC
-        results.sort(key=lambda x: (-x["stars"], x["name"]))
+        matched.sort(key=lambda x: (-x["forks"], x["name"]))
 
-        # Return enough results to cover all tied packages at the cutoff
-        # Include all packages with stars >= the 5th highest star count
-        if len(results) >= 5:
-            cutoff_stars = results[4]["stars"]
-            top_results = [r for r in results if r["stars"] >= cutoff_stars]
-        else:
-            top_results = results
+        top5 = matched[:5]
+        top5_output = "\n".join(f"{r['name']},{r['version']}" for r in top5)
 
         return {
-            "top_packages": top_results,
-            "top5_output": "\n".join(f"{r['name']},{r['version']}" for r in top_results[:20])
+            "top_packages": top5,
+            "top5_output": top5_output
         }
 
     except Exception as e:
