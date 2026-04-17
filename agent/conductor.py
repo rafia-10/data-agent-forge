@@ -375,6 +375,8 @@ def synthesize_node(state: AgentState) -> AgentState:
         pre_computed = _precompute_googlelocal(state["tool_results"], state["question"])
     elif dataset == "deps_dev":
         pre_computed = _precompute_deps_dev(state["tool_results"], state["question"])
+    elif dataset == "stockindex":
+        pre_computed = _precompute_stockindex(state["tool_results"], state["question"])
     else:
         pre_computed = _precompute_joins(state["tool_results"])
     
