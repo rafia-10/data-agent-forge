@@ -877,22 +877,52 @@ def _precompute_yelp(tool_results: list[dict]) -> dict:
 
 
 def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
-    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info"""
+    """deps_dev_v1: SQLite packageinfo + DuckDB project_packageversion + project_info
+    Q1: top 5 NPM latest-release packages by GitHub stars
+    Q2: top 5 MIT-licensed projects by GitHub fork count
+    """
     import requests, re
 
+    question_lower = question.lower()
+
+    # ── Q2: fork-based ranking of MIT projects (project_info only, no SQLite join) ──
+    if "fork" in question_lower or "project license" in question_lower:
+        def extract_forks(text):
+            m = re.search(r'([\d,]+)\s+forks', text)
+            if m: return int(m.group(1).replace(',', ''))
+            m = re.search(r'forks\s+count\s+of\s+([\d,]+)', text, re.IGNORECASE)
+            if m: return int(m.group(1).replace(',', ''))
+            return 0
+
+        try:
+            r = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
+                json={"sql": """
+                    SELECT regexp_extract(Project_Information, 'The project ([^ ]+)', 1) as ProjectName,
+                           Project_Information
+                    FROM project_info
+                    WHERE Licenses LIKE '%MIT%'
+                """},
+                timeout=30)
+            rows = r.json().get("result", [])
+            for row in rows:
+                row["forks"] = extract_forks(row["Project_Information"])
+            rows = [row for row in rows if len(row["ProjectName"]) > 3]
+            rows.sort(key=lambda x: -x["forks"])
+            top5 = rows[:5]
+            top5_output = "\n".join(row["ProjectName"] for row in top5)
+            return {
+                "top_packages": top5,
+                "top5_output": top5_output
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ── Q1: top 5 NPM latest-release packages by GitHub stars ──
     def extract_stars(text):
-        # Pattern 1: "X stars" or "X,XXX stars"
         m = re.search(r'([\d,]+)\s+stars', text)
-        if m:
-            return int(m.group(1).replace(',', ''))
-        # Pattern 2: "stars count of X"
-        m = re.search(r'stars\s+count\s+of\s+([\d,]+)', text)
-        if m:
-            return int(m.group(1).replace(',', ''))
-        # Pattern 3: "a remarkable stars count of X"
+        if m: return int(m.group(1).replace(',', ''))
         m = re.search(r'stars\s+count\s+of\s+([\d,]+)', text, re.IGNORECASE)
-        if m:
-            return int(m.group(1).replace(',', ''))
+        if m: return int(m.group(1).replace(',', ''))
         return 0
 
     try:
@@ -919,7 +949,7 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
             return {"error": "SQLite returned no latest releases"}
 
         # Step 2 — DuckDB: join packageversion to project_info, get raw Project_Information
-        # No ORDER BY, no CAST — those break the query; sort in Python instead
+        # NOTE: no ORDER BY or CAST in SQL — those cause empty results; sort in Python
         r2 = requests.post("http://127.0.0.1:5000/v1/tools/query_duckdb_deps_dev_project",
             json={"sql": """
                 SELECT
@@ -938,9 +968,7 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
         if not duckdb_rows:
             return {"error": "DuckDB join returned no rows"}
 
-        # Step 3 — Python: cross-filter, extract stars with multi-pattern regex, rank
-        # Step 3 — Python: cross-filter, extract stars with multi-pattern regex, rank
-        # Use MAX stars per package (same package can map to multiple projects)
+        # Step 3 — Python: cross-filter, extract stars, keep MAX stars per package, rank
         best = {}
         for row in duckdb_rows:
             key = (row["Name"], row["Version"])
@@ -969,7 +997,6 @@ def _precompute_deps_dev(tool_results: list[dict], question: str = "") -> dict:
 
     except Exception as e:
         return {"error": str(e)}
-
 
 
 
