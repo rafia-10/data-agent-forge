@@ -798,30 +798,40 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
         return r.json().get('result', [])
 
     def classify(title, desc):
-        text = (title + ' ' + desc).lower()
-        scitech = ['tech', 'software', 'computer', 'internet', 'digital', 'science',
-                   'research', 'nasa', 'space', 'robot', 'linux', 'security', 'network',
-                   'wireless', 'chip', 'processor', 'server', 'microsoft', 'google',
-                   'apple', 'ibm', 'intel', 'cisco', 'oracle', 'ebay', 'amazon', 'yahoo',
-                   'broadband', 'telecom', 'satellite', 'genome', 'biotech', 'physics',
-                   'chemistry', 'astronomy', 'climate', 'energy', 'scientists',
-                   'researchers', 'laboratory', 'gene', 'virus', 'vaccine', 'drug',
-                   'medical', 'cancer', 'stem cell']
-        sports = ['game', 'match', 'team', 'player', 'coach', 'season', 'league',
-                  'championship', 'tournament', 'olympic', 'athlete', 'score', 'win',
-                  'loss', 'defeat', 'victory', 'stadium', 'basketball', 'football',
-                  'soccer', 'baseball', 'tennis', 'golf', 'cricket', 'rugby', 'nfl',
-                  'nba', 'mlb', 'nhl', 'fifa', 'sport', 'racing', 'runner', 'swim']
-        business = ['stock', 'market', 'company', 'corp', 'inc', 'earnings', 'profit',
-                    'revenue', 'shares', 'investor', 'ceo', 'merger', 'acquisition',
-                    'economy', 'bank', 'finance', 'trade', 'oil', 'dollar', 'quarter']
-        if any(kw in text for kw in sports):
-            return 'sports'
-        if any(kw in text for kw in scitech):
-            return 'scitech'
-        if any(kw in text for kw in business):
-            return 'business'
-        return 'world'
+    text = (title + ' ' + desc).lower()
+    
+    # Strong sports indicators - very specific to sports
+    strong_sports = ['nfl', 'nba', 'mlb', 'nhl', 'fifa', 'olympic',
+                     'quarterback', 'touchdown', 'pitcher', 'goalkeeper',
+                     'basketball', 'football', 'soccer', 'baseball', 'tennis',
+                     'golf', 'cricket', 'rugby', 'championship', 'tournament',
+                     'athlete', 'stadium', 'coach', 'league', 'playoff',
+                     'innings', 'wicket', 'referee', 'dribble', 'slam dunk',
+                     'hat trick', 'offside', 'strikeout', 'home run',
+                     'points and', 'rebounds', 'assists', 'yards', 'tackles']
+    
+    scitech = ['tech', 'software', 'computer', 'internet', 'digital', 'science',
+               'research', 'nasa', 'space', 'robot', 'linux', 'security', 'network',
+               'wireless', 'chip', 'processor', 'server', 'microsoft', 'google',
+               'apple', 'ibm', 'intel', 'cisco', 'oracle', 'ebay', 'amazon', 'yahoo',
+               'broadband', 'telecom', 'satellite', 'genome', 'biotech', 'physics',
+               'chemistry', 'astronomy', 'climate', 'energy', 'scientists',
+               'researchers', 'laboratory', 'gene', 'virus', 'vaccine', 'drug',
+               'medical', 'cancer', 'stem cell']
+    
+    business = ['stock', 'shares', 'investor', 'ceo', 'merger', 'acquisition',
+                'earnings', 'profit', 'revenue', 'quarterly', 'fiscal',
+                'economy', 'bank', 'finance', 'trade', 'oil price', 'dollar',
+                'wall street', 'nasdaq', 'nyse', 'dow jones', 'corp.', 'inc.',
+                'billion', 'million dollar', 'ipo', 'dividend', 'hedge fund']
+    
+    if any(kw in text for kw in strong_sports):
+        return 'sports'
+    if any(kw in text for kw in scitech):
+        return 'scitech'
+    if any(kw in text for kw in business):
+        return 'business'
+    return 'world'
 
     q = question.lower()
 
