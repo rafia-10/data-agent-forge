@@ -798,7 +798,7 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
         return r.json().get('result', [])
 
     def classify(title, desc):
-    text = (title + ' ' + desc).lower()
+        text = (title + ' ' + desc).lower()
     
     # Strong sports indicators - very specific to sports
     strong_sports = ['nfl', 'nba', 'mlb', 'nhl', 'fifa', 'olympic',
