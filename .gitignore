@@ -40,7 +40,6 @@ ENV/
 # Logs
 *.log
 logs/
-*.jsonl
 !eval/score_log.jsonl
 !kb/corrections/corrections_log.md
 

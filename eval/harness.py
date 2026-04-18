@@ -240,6 +240,7 @@ def run_query(
     query_id:       int,
     n_trials:       int = 5,
     use_hints:      bool = True,
+    no_early_stop:  bool = False,
 ) -> QueryResult:
     """Run n_trials trials for a single query and return aggregated QueryResult."""
     query_dir    = DAB_ROOT / f"query_{dataset_folder}" / f"query{query_id}"
@@ -259,16 +260,17 @@ def run_query(
         qr.trials.append(trial)
 
         # early exit if we already have a majority (saves API calls)
-        remaining = n_trials - t
-        if qr.pass_count > n_trials / 2:
-            logger.info(f"    Majority reached ({qr.pass_count}/{t}), skipping {remaining} remaining trials")
-            break
-        if qr.pass_count == 0 and remaining < (n_trials - qr.pass_count):
-            # can't reach majority even if all remaining pass
-            needed = (n_trials // 2) + 1
-            if qr.pass_count + remaining < needed:
-                logger.info(f"    Can't reach majority, skipping {remaining} remaining trials")
+         # early exit if we already have a majority (saves API calls)
+        if not no_early_stop:
+            remaining = n_trials - t
+            if qr.pass_count > n_trials / 2:
+                logger.info(f"    Majority reached ({qr.pass_count}/{t}), skipping {remaining} remaining trials")
                 break
+            if qr.pass_count == 0 and remaining < (n_trials - qr.pass_count):
+                needed = (n_trials // 2) + 1
+                if qr.pass_count + remaining < needed:
+                    logger.info(f"    Can't reach majority, skipping {remaining} remaining trials")
+                    break
 
     logger.info(
         f"  Query {query_id} summary: {qr.pass_count}/{qr.n_trials} passed "
@@ -284,6 +286,7 @@ def run_dataset(
     query_ids:      list[int] | None = None,
     n_trials:       int  = 5,
     use_hints:      bool = True,
+    no_early_stop:  bool = False,
 ) -> tuple[DatasetResult, list[QueryResult]]:
     """Run all queries for one dataset. Returns (DatasetResult, list[QueryResult])."""
     dataset_name = DATASET_REGISTRY.get(dataset_folder, dataset_folder)
@@ -301,7 +304,7 @@ def run_dataset(
 
     query_results = []
     for qid in query_ids:
-        qr = run_query(dataset_folder, dataset_name, qid, n_trials, use_hints)
+        qr = run_query(dataset_folder, dataset_name, qid, n_trials, use_hints, no_early_stop)
         query_results.append(qr)
 
     pass_count     = sum(1 for qr in query_results if qr.majority_pass)
@@ -326,11 +329,12 @@ def run_dataset(
 # ── benchmark runner ──────────────────────────────────────────────────────────
 
 def run_benchmark(
-    datasets:   list[str] | None = None,
-    query_ids:  list[int] | None = None,
-    n_trials:   int  = 5,
-    use_hints:  bool = True,
-    model:      str  = "claude-sonnet-4.6",
+    datasets:      list[str] | None = None,
+    query_ids:     list[int] | None = None,
+    n_trials:      int  = 5,
+    use_hints:     bool = True,
+    model:         str  = "claude-sonnet-4.6",
+    no_early_stop: bool = False,
 ) -> BenchmarkResult:
     """
     Run the full benchmark across all datasets and queries.
@@ -358,7 +362,7 @@ def run_benchmark(
 
     for ds_folder in datasets:
         try:
-            ds_result, qrs = run_dataset(ds_folder, query_ids, n_trials, use_hints)
+            ds_result, qrs = run_dataset(ds_folder, query_ids, n_trials, use_hints, no_early_stop)
         except RateLimitError as e:
             logger.error(f"\n{'='*60}")
             logger.error(f"RATE LIMIT HIT — stopping benchmark early.")
@@ -472,6 +476,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_autodream", action="store_true",
         help="Skip autoDream consolidation after the run",
+    )
+    parser.add_argument(
+        "--no_early_stop", action="store_true",
+        help="Disable early stopping — run all n_trials regardless of majority",
     )
     args = parser.parse_args()
 

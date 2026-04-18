@@ -69,9 +69,6 @@
 |------|--------|---------------|-----------------|
 | [date] | [platform + person] | [what they told us] | [what changed] |
 
-### Notable responses received
-
-- [Any reply worth saving — update as they come in]
 
 ---
 
@@ -79,13 +76,17 @@
 
 | Platform | Posts / threads | Notes |
 |----------|----------------|-------|
-| X | 3 threads (15 tweets) + daily updates | @GeminiTrp1 |
+| X | 3 threads (50 tweets) + daily updates | @GeminiTrp1 |
 | Medium | 2 articles | Kickoff + final retrospective |
 | ReadyTensor | 2 articles | Both cross-posted from Medium |
 | LinkedIn | 2 final post | [What dataagentbench taught me about enterprise data reality](https://www.linkedin.com/pulse/what-dataagentbench-taught-me-enterprise-data-reality-alemayehu-kxgte?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEVqX6EBJbqiOmkIS5GVwaB5nusYQBFwdug) and [From 185 to 444: A full story of how the Team Gemini built a data agent](https://www.linkedin.com/pulse/from-185-444-full-story-how-team-gemini-built-data-agent-alemayehu-ea5we?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEVqX6EBJbqiOmkIS5GVwaB5nusYQBFwdug) |
 | Discord — Hugging Face | 2 community post | Introduction and Wrap post with repo link |
 | Slack | Daily posts (Apr 14–18) | Internal mob session reports |
 | Reddit | 2 Posts | [Music Brainz Dataset 66% Pass](https://www.reddit.com/r/learnmachinelearning/comments/1234567/music_brainz_dataset_66_pass/) and [Final Thread — Final Score, Repo Link, Team Credits](https://www.reddit.com/r/PromptQL/comments/1234568/final_thread_final_score_repo_link_team_credits/) |
+| LinkedIn | 1 final wrap up post and 1 success declare post |https://www.linkedin.com/posts/rafia-kedir_github-deregit2025data-agent-forge-context-layered-share-7451158850134732800-GPet?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEVqX6EBJbqiOmkIS5GVwaB5nusYQBFwdug and https://www.linkedin.com/posts/rafia-kedir_oracle-forge-trp1-fde-programme-april-share-7451305546013523968-H37e?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEVqX6EBJbqiOmkIS5GVwaB5nusYQBFwdug |
+| Discord — Hugging Face | 2 community post | Introduction and Wrap post with repo link |
+| Slack | Daily posts (Apr 14–18) | Internal mob session reports |
+| Reddit |Breaking the 38%ceiling | https://www.reddit.com/r/learnmachinelearning/s/Fk2EyuBhEF|
 
 ### Retrospective: what compounded, what didn't
 
@@ -94,3 +95,6 @@
 
 - The @d_derib MCP exchange on X became the clearest example of community engagement feeding back into an architectural decision — documented in both the community log and the interim report.
 - Daily X threads gave the team a public build log that the LinkedIn final post could draw from as proof of work.
+
+**What we would change
+- Document community responses in real time rather than retroactively. Several potentially useful replies were missed because the log wasn't checked daily.
