@@ -32,14 +32,31 @@ AGENT_MD       = ORACLE_ROOT / "agent" / "AGENT.md"
 KB_DOMAIN_DIR  = ORACLE_ROOT / "kb" / "domain"
 KB_CORRECTIONS = ORACLE_ROOT / "kb" / "corrections" / "corrections_log.md"
 
-OPENROUTER_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
+# ── Multi-key rotation ────────────────────────────────────────────────────────
+def _load_all_keys() -> list[str]:
+    keys = []
+    primary = os.getenv("OPENROUTER_API_KEY")
+    if primary:
+        keys.append(primary)
+    for i in range(2, 7):
+        k = os.getenv(f"OPENROUTER_API_KEY_{i}")
+        if k:
+            keys.append(k)
+    return keys
+
+_ALL_KEYS  = _load_all_keys()
+_key_index = [0]
+
+def _get_active_key() -> str:
+    return _ALL_KEYS[_key_index[0]] if _ALL_KEYS else ""
+
+OPENROUTER_KEY = _get_active_key()
 CLAUDE_MODEL   = "anthropic/claude-sonnet-4.6"
 
 # ── OpenRouter client ─────────────────────────────────────────────────────────
-
 def get_client() -> OpenAI:
     return OpenAI(
-        api_key=OPENROUTER_KEY,
+        api_key=_get_active_key(),
         base_url="https://openrouter.ai/api/v1",
         default_headers={
             "HTTP-Referer": "https://github.com/oracle-forge",
@@ -47,17 +64,32 @@ def get_client() -> OpenAI:
         }
     )
 
-
 def llm_call(messages: list[dict], max_tokens: int = 2000) -> str:
-    """Make a Claude call via OpenRouter."""
-    client = get_client()
-    response = client.chat.completions.create(
-        model=CLAUDE_MODEL,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=0.0,
-    )
-    return response.choices[0].message.content
+    """Make a Claude call via OpenRouter with automatic key rotation."""
+    import time
+    last_error = None
+    for attempt in range(len(_ALL_KEYS)):
+        try:
+            client = get_client()
+            response = client.chat.completions.create(
+                model=CLAUDE_MODEL,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.0,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+            if "402" in error_str or "429" in error_str or "payment" in error_str.lower():
+                _key_index[0] += 1
+                if _key_index[0] >= len(_ALL_KEYS):
+                    raise ValueError(f"All {len(_ALL_KEYS)} API keys exhausted.") from e
+                print(f"[KeyRotation] Switching to key {_key_index[0] + 1}/{len(_ALL_KEYS)}")
+                time.sleep(2)
+            else:
+                raise
+    raise last_error
 
 
 # ── context loader ────────────────────────────────────────────────────────────
