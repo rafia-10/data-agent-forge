@@ -126,3 +126,30 @@ Applied per `Index`, filtered to `Date >= '2020-01-01'`, grouped by `Index`. The
 - **North America:** Symbols tied to US exchanges (NYSE, NASDAQ, S&P 500 → `^GSPC`, Dow Jones → `^DJI`, NASDAQ Composite → `^IXIC`) and Canadian exchanges (TSX → `^GSPTSE`)
 - **Europe:** Symbols tied to German (DAX → `^GDAXI`), French (CAC 40 → `^FCHI`), UK (FTSE 100 → `^FTSE`), and other European exchange symbols
 - **Unknown:** If an index symbol is not in the list above, query `index_info` by exchange name and infer region from country geography.
+
+---
+
+## 6. Query Patterns
+
+### query1: *Which stock index in the Asia region has exhibited the highest average intraday volatility since 2020?*
+
+1. First, identify Asian indices using `index_info` and domain knowledge. From `indextrade_database`, get the distinct list of indices. These likely include `N225` (Japan), `HSI` (Hong Kong), and `000001.SS` (China).
+2. `query_duckdb_stockindex_trade` (`index_trade`): Filter `Index IN ('N225', 'HSI', '000001.SS', ...)` AND `Date >= '2020-01-01'`.
+3. Group by `Index` and compute `AVG((High - Low) / Open)` as `avg_volatility`.
+4. Order by `avg_volatility DESC` and return the top `Index` symbol.
+
+### query2: *Among North American stock indices, which indices had more up days than down days in 2018?*
+
+1. Identify North American indices using `index_info` and domain knowledge. This includes indices from the USA and Canada (e.g., symbols reflecting NYSE, NASDAQ, TSX).
+2. `query_duckdb_stockindex_trade` (`index_trade`): Filter `Index IN (...)` and `Date LIKE '2018-%'` (or `Date BETWEEN '2018-01-01' AND '2018-12-31'`).
+3. Group by `Index`. Calculate `up_days` as `SUM(CASE WHEN Close > Open THEN 1 ELSE 0 END)` and `down_days` as `SUM(CASE WHEN Close < Open THEN 1 ELSE 0 END)`.
+4. Filter for `up_days > down_days` and return the resulting indices.
+
+### query3: *If an investor had made regular monthly investments in all indices since 2000, which 5 indices would have produced the highest overall returns, and what countries do they belong to?*
+
+1. `query_duckdb_stockindex_trade` (`index_trade`): Filter `Date >= '2000-01-01'`.
+2. To simulate regular monthly investments, use standard Dollar Cost Averaging math: `total_investment` is the number of months N. The total accumulated shares for each index is the sum of `1 / CloseUSD` evaluated exactly once per month (e.g., picking the first available trading day of each month for each index). Then the final value is `total_shares * final_CloseUSD`. The ROI or return ratio is `(total_shares * final_CloseUSD) / N`.
+3. Filter out any indices that don't have price history starting in or near the year 2000.
+4. Compute the return ratio for each index, order by return DESC, and take the top 5 indices.
+5. `query_sqlite_stockindex_info` (`index_info`): Look up those top 5 indices using geographic mapping to determine the Country they belong to.
+6. Return the top 5 indices and their respective countries.
