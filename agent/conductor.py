@@ -817,9 +817,9 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
                      'offside', 'strikeout', 'home run',
                      'rebounds', 'assists', 'tackles']
     
-        scitech = ['tech', 'software', 'computer', 'internet', 'science',
+        scitech = ['tech', 'software', 'computer', 'science',
            'nasa', 'space exploration', 'robot', 'linux',
-           'processor', 'microsoft', 'google', 'ibm', 'ebay',
+           'processor', 'microsoft', 'google', 'ibm',
            'amazon', 'yahoo', 'broadband', 'telecom', 'genome',
            'biotech', 'physics', 'chemistry', 'astronomy',
            'climate change', 'laboratory', 'vaccine', 'stem cell',
