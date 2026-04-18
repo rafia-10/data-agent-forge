@@ -40,9 +40,9 @@
 
 *Links to substantive technical comments on Reddit (r/MachineLearning, r/LocalLLaMA) or Discord.*
 
-- **Platform**: [Reddit/Discord]
-- **Link**: [URL]
-- **Technical Contribution**: [1-sentence summary of the technical insight or question shared]
+- **Platform**: [Discord]
+- **Link**: https://discord.com/channels/879548962464493619/897390720388825149/1494960835167125655
+- **Technical Contribution**: Discovered that our data agent’s failures were not reasoning issues but infrastructure/tooling failures, where MCP tool connection loss fully invalidated otherwise correct multi-database execution plans.
 
 ---
 
