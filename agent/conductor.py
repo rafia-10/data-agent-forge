@@ -784,12 +784,18 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
     """Handle all agnews queries by calling MCP directly."""
     import requests
 
-    def mongo(query=None, limit=0):
-        payload = {'query': query or {}}
-        if limit:
-            payload['limit'] = limit
+    def mongo(query=None, ids=None):
+        import json as _json
+        if ids is not None:
+            pipeline = _json.dumps([{"$match": {"article_id": {"$in": ids}}},
+                                    {"$project": {"article_id": 1, "title": 1, "description": 1}}])
+        elif query:
+            pipeline = _json.dumps([{"$match": query},
+                                    {"$project": {"article_id": 1, "title": 1, "description": 1}}])
+        else:
+            pipeline = _json.dumps([{"$project": {"article_id": 1, "title": 1, "description": 1}}])
         r = requests.post('http://127.0.0.1:5000/v1/tools/query_mongo_agnews',
-            json=payload)
+            json={'pipeline': pipeline})
         return r.json().get('result', [])
 
     def sq(sql):
@@ -863,7 +869,7 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
         )]
         if not ids:
             return {}
-        articles = mongo(query={"article_id": {"$in": ids}})
+        articles = mongo(ids=ids)
         total = len(articles)
         scitech_count = sum(1 for a in articles
                            if classify(a.get('title',''), a.get('description','')) == 'scitech')
@@ -881,7 +887,7 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
         if not rows:
             return {}
         id_year = {r['article_id']: r['year'] for r in rows}
-        articles = mongo(query={"article_id": {"$in": list(id_year.keys())}})
+        articles = mongo(ids=list(id_year.keys()))
         year_counts = {}
         for a in articles:
             if classify(a.get('title',''), a.get('description','')) == 'business':
@@ -901,7 +907,7 @@ def _precompute_agnews_category(tool_results: list[dict], question: str) -> dict
         if not rows:
             return {}
         id_region = {r['article_id']: r['region'] for r in rows}
-        articles = mongo(query={"article_id": {"$in": list(id_region.keys())}})
+        articles = mongo(ids=list(id_region.keys()))
         region_counts = {}
         for a in articles:
             if classify(a.get('title',''), a.get('description','')) == 'world':
